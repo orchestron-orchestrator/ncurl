@@ -13,6 +13,10 @@ import netconf
 import xml
 
 
+import yang
+import yang.gen3
+
+
 def _check_rpc_error(result: ?xml.Node) -> ?str:
     """Check for RPC errors in a NETCONF response.
 
@@ -101,6 +105,11 @@ actor CmdGetConfig(env, args, log_handler):
     filter_xpath = args.get_str("filter-xpath")
     xpath_namespaces = args.get_strlist("xpath-namespaces")
     output_file = args.get_str("output")
+    format = args.get_str("format")
+
+    var config_xml: ?xml.Node = None
+    var client: ?netconf.Client = None
+    var schemas: list[str] = []
 
     def _on_connect(c: netconf.Client, e: ?Exception):
         if e is not None:
@@ -151,42 +160,101 @@ actor CmdGetConfig(env, args, log_handler):
             env.exit(1)
 
         # Extract data element
-        config_data: ?xml.Node = None
         if result is not None:
             for child in result.children:
                 if child.tag == "data":
-                    config_data = child
+                    config_xml = child
                     break
 
-        config_xml = ""
-        if config_data is not None:
-            # Extract just the configuration data content
-            if len(config_data.children) > 0:
-                # Encode children of data element
-                for data_child in config_data.children:
-                    config_xml += data_child.encode()
-            elif config_data.text is not None:
-                # If data element has text content
-                config_xml = str(config_data.text)
-        else:
+        if config_xml is None:
             print("No data element in response", err=True)
             env.exit(1)
 
+        # If format is not raw-xml, fetch schemas
+        if format != "raw-xml":
+            print("Fetching schemas for data conversion...")
+            schema_getter = SchemaGetter(c, log_handler)
+            schema_getter.download(_on_schema_download, _on_schemas_complete, "all")
+        else:
+            # For raw-xml, just output the config
+            if config_xml is not None:
+                # Extract just the configuration data content
+                config = ""
+                if len(config_xml.children) > 0:
+                    # Encode children of data element
+                    for data_child in config_xml.children:
+                        config += data_child.encode()
+                elif config_xml.text is not None:
+                    # If data element has text content
+                    config = str(config_xml.text)
+                _output_config(config)
+
+    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: ?str, namespace: ?str, version: ?str, format: ?str), schema_data: ?str):
+        """Collect downloaded schemas into the list"""
+        if schema_data is not None:
+            schema_identifier = schema.identifier
+            if schema_identifier is not None and schema_identifier.startswith("junos-rpc"):
+                return
+            schemas.append(schema_data)
+
+    def _on_schemas_complete():
+        """Called when all schemas have been downloaded"""
+        def _close_cb():
+            env.exit(1)
+
+        print("Retrieved {len(schemas)} schemas")
+
+        root = yang.compile(schemas)
+        print("Compiled schema")
+        c = config_xml
+        if c is not None:
+            gdata = yang.gen3.from_xml(root, c, loose=True)
+
+            if format == "json":
+                _output_config(gdata.to_json())
+                return
+            elif format == "acton-gdata":
+                _output_config(gdata.prsrc())
+                return
+            elif format == "acton-adata":
+                print("Note: adata conversion not yet implemented. Outputting raw XML.")
+            elif format == "xml":
+                _output_config(gdata.to_xmlstr())
+                return
+
+            print("Unknown output format")
+            if client is not None:
+                client.close(_close_cb)
+            else:
+                env.exit(1)
+        else:
+            print("No config")
+            if client is not None:
+                client.close(_close_cb)
+            else:
+                env.exit(1)
+
+    def _output_config(config):
+        """Output the configuration data"""
         if output_file != "":
             # Write to file
             f = file.WriteFile(file.WriteFileCap(file.FileCap(env.auth)), output_file)
-            f.write(config_xml.encode())
+            f.write(config.encode())
             f.close()
             print("Configuration saved to: {output_file}")
         else:
             # Print to stdout
-            print(config_xml)
+            print(config)
 
         def _close_cb():
             env.exit(0)
-        c.close(_close_cb)
 
-    c = netconf.Client(env.auth,
+        if client is not None:
+            client.close(_close_cb)
+        else:
+            env.exit(0)
+
+    client = netconf.Client(env.auth,
                       on_connect=_on_connect,
                       on_notif=None,
                       address=host,
@@ -196,6 +264,84 @@ actor CmdGetConfig(env, args, log_handler):
                       port=port,
                       log_handler=log_handler)
 
+actor SchemaGetter(client, log_handler):
+    """Helper actor for downloading schemas from NETCONF server."""
+
+    var schemas_to_download: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)] = []
+    var current_download_index = 0
+    var on_get_schema_cb: ?action(int, int, (identifier: ?str, namespace: ?str, version: ?str, format: ?str), ?str) -> None = None
+    var on_done_cb: ?action() -> None = None
+
+    def download(on_get_schema: action(int, int, (identifier: ?str, namespace: ?str, version: ?str, format: ?str), ?str) -> None, on_done: action() -> None, identifier_str: str):
+        """Download schemas. If identifier_str is 'all', download all schemas."""
+        on_get_schema_cb = on_get_schema
+        on_done_cb = on_done
+        schemas_to_download = []
+        current_download_index = 0
+
+        if identifier_str == "all":
+            # Get list of all schemas first
+            client.list_schemas(_on_list_schemas)
+        else:
+            # Download single schema
+            schemas_to_download.append((identifier=identifier_str, namespace=None, version=None, format="yang"))
+            _download_next_schema()
+
+    def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)]):
+        """Handle schema list response"""
+        # Only download yang format (not yin) to avoid duplicates
+        for schema in schemas:
+            if schema.identifier is not None and schema.format == "yang":
+                schemas_to_download.append(schema)
+
+        _download_next_schema()
+
+    def _download_next_schema():
+        """Download the next schema in the queue"""
+        if current_download_index >= len(schemas_to_download):
+            # All schemas downloaded
+            if on_done_cb is not None:
+                on_done_cb()
+        else:
+            schema = schemas_to_download[current_download_index]
+
+            schema_identifier = schema.identifier
+            if schema_identifier is None:
+                # Skip schema with no identifier
+                current_download_index += 1
+                _download_next_schema()
+                return
+
+            ident = schema_identifier if schema_identifier is not None else ""
+
+            # Use "yang" as default format if not specified
+            format_str = schema.format if schema.format is not None else "yang"
+            client.get_schema(_on_get_schema, ident, schema.version, format_str)
+
+    def _on_get_schema(c: netconf.Client, result: ?xml.Node):
+        """Handle individual schema response"""
+        if current_download_index < len(schemas_to_download):
+            schema = schemas_to_download[current_download_index]
+
+            # Check for errors
+            error_msg = _check_rpc_error(result)
+            schema_data: ?str = None
+
+            if error_msg is None:
+                # Extract schema data
+                if result is not None:
+                    for child in result.children:
+                        if child.tag == "data":
+                            schema_data = child.text
+                            break
+
+            # Call the callback with current progress and schema data
+            if on_get_schema_cb is not None:
+                on_get_schema_cb(current_download_index, len(schemas_to_download), schema, schema_data)
+
+        # Move to next schema
+        current_download_index += 1
+        _download_next_schema()
 
 actor CmdGetSchema(env, args, log_handler):
     """Download schema(s) from a NETCONF server"""
@@ -210,120 +356,69 @@ actor CmdGetSchema(env, args, log_handler):
     format = args.get_str("format")
     output_dir = args.get_str("output-dir")
 
-    var schemas_to_download: list[(identifier: ?str, version: ?str, format: ?str)]= []
-    var current_download_index = 0
     var client: ?netconf.Client = None
+    var schema_getter: ?SchemaGetter = None
 
     def _on_connect(c: netconf.Client, e: ?Exception):
         if e is not None:
             print("Error: Failed to connect: {e}", err=True)
             env.exit(1)
         else:
-            client = c
-            if identifier_str == "all":
-                # First get the list of schemas
-                c.list_schemas(_on_list_schemas_for_download)
+            schema_getter = SchemaGetter(c, log_handler)
+
+            # Start download using SchemaGetter
+            sg = schema_getter
+            if sg is not None:
+                sg.download(_on_schema_download, _on_download_complete, identifier_str)
+
+    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: ?str, namespace: ?str, version: ?str, format: ?str), schema_data: ?str):
+        """Handle each downloaded schema"""
+        print("Downloading [{current_index + 1}/{total_schemas}]: {schema.identifier}")
+
+        if schema_data is not None:
+            # Build proper filename with identifier and version
+            filename = "{schema.identifier}"
+            if schema.version is not None:
+                filename = "{schema.identifier}@{schema.version}"
+            if schema.format is not None:
+                filename = "{filename}.{schema.format}"
             else:
-                # Download single schema
-                schemas_to_download.append((identifier=identifier_str, version=version, format=format))
-                _download_next_schema()
+                filename = "{filename}.yang"
 
-    def _on_list_schemas_for_download(c: netconf.Client, schemas: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)]):
-        # Only download yang format (not yin) to avoid duplicates
-        for schema in schemas:
-            # Only add schemas with valid identifiers and yang format
-            if schema.identifier is not None and schema.format == "yang":
-                schemas_to_download.append((identifier=schema.identifier, version=version, format=schema.format))
+            if output_dir not in {"", "."}:
+                fs = file.FS(file.FileCap(env.auth))
+                try:
+                    await async fs.mkdir(output_dir)
+                except OSError as err:
+                    if "already exists" not in err.error_message:
+                        raise err
+                filepath = file.join_path([output_dir, filename])
+            else:
+                filepath = filename
 
-        print("Found {len(schemas_to_download)} schemas to download")
-        _download_next_schema()
-
-    def _download_next_schema():
-        if current_download_index >= len(schemas_to_download):
-            print("\nAll schemas downloaded successfully!")
-            _close_and_exit()
+            # Write to file
+            f = file.WriteFile(file.WriteFileCap(file.FileCap(env.auth)), filepath)
+            f.write(schema_data.encode())
+            f.close()
+            print("  Saved to: {filepath}")
         else:
-            schema = schemas_to_download[current_download_index]
+            print("  Warning: No data received for {schema.identifier}")
 
-            schema_identifier = schema.identifier
-            if schema_identifier is None:
-                print("Skipping schema with no identifier")
-                current_download_index += 1
-                _download_next_schema()
-                ident = ""
-                return
-            ident = schema_identifier if schema_identifier is not None else ""
-
-            print("Downloading [{current_download_index + 1}/{len(schemas_to_download)}]: {schema.identifier}")
-
-            c = client
-            if c is not None:
-                # Use "yang" as default format if not specified
-                format_str = schema.format if schema.format is not None else "yang"
-                c.get_schema(_on_get_schema, ident, schema.version, format_str)
-
-    def _on_get_schema(c: netconf.Client, result: ?xml.Node):
-        if current_download_index < len(schemas_to_download):
-            schema = schemas_to_download[current_download_index]
-
-            # Check for errors
-            error_msg = _check_rpc_error(result)
-            if error_msg is not None:
-                print("  Error downloading {schema.identifier}: {error_msg}", err=True)
-            else:
-                # Extract schema data
-                schema_data: ?str = None
-                if result is not None:
-                    for child in result.children:
-                        if child.tag == "data":
-                            schema_data = child.text
-                            break
-
-                if schema_data is not None:
-                    # Build proper filename with identifier and version
-                    # We already ensure identifier is not None before getting here
-                    filename = "{schema.identifier}"
-                    if schema.version is not None:
-                        filename = "{schema.identifier}@{schema.version}"
-                    if schema.format is not None:
-                        filename = "{filename}.{schema.format}"
-                    else:
-                        filename = "{filename}.yang"
-
-                    if output_dir not in {"", "."}:
-                        fs = file.FS(file.FileCap(env.auth))
-                        try:
-                            await async fs.mkdir(output_dir)
-                        except OSError as err:
-                            if "already exists" not in err.error_message:
-                                raise err
-                        filepath = file.join_path([output_dir, filename])
-                    else:
-                        filepath = filename
-
-                    # Write to file
-                    f = file.WriteFile(file.WriteFileCap(file.FileCap(env.auth)), filepath)
-                    f.write(schema_data.encode())
-                    f.close()
-                    print("  Saved to: {filepath}")
-                else:
-                    print("  Warning: No data received for {schema.identifier}")
-
-        # Move to next schema
-        current_download_index += 1
-        _download_next_schema()
+    def _on_download_complete():
+        """Called when all schemas have been downloaded"""
+        print("\nAll schemas downloaded successfully!")
+        _close_and_exit()
 
     def _close_and_exit():
-        c = client
-        if c is not None:
+        if client is not None:
             def _close_cb():
                 env.exit(0)
-            c.close(_close_cb)
+            client.close(_close_cb)
         else:
             env.exit(0)
 
     # Connect and start the download process
-    netconf.Client(env.auth,
+    client = netconf.Client(env.auth,
                   on_connect=_on_connect,
                   on_notif=None,
                   address=host,
@@ -376,6 +471,7 @@ actor main(env):
         p_get_config.add_option("filter-subtree", "str", "?", "", "XML subtree filter")
         p_get_config.add_option("filter-xpath", "str", "?", "", "XPath expression for filtering")
         p_get_config.add_option("xpath-namespaces", "strlist", "*", [], "Namespace declarations for XPath filtering (format: prefix=uri)")
+        p_get_config.add_option("format", "str", "?", "raw-xml", "Output format (raw-xml, xml, json, acton-gdata or acton-adata")
         p_get_config.add_option("output", "str", "?", "", "Output file (if not specified, prints to stdout)")
 
         p_get_schema = p.add_cmd("get-schema", "Download schema(s) from NETCONF server", cmd_get_schema)

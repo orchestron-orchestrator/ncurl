@@ -71,6 +71,12 @@ Retrieve configuration from a NETCONF datastore:
 
 # Save configuration to file
 ./ncurl --host router.example.com get-config --output config.xml
+
+# Get configuration in JSON format
+./ncurl --host router.example.com get-config --format json
+
+# Get configuration as Acton GData
+./ncurl --host router.example.com get-config --format acton-gdata
 ```
 
 **Options:**
@@ -78,6 +84,7 @@ Retrieve configuration from a NETCONF datastore:
 - `--filter-subtree <xml>`: XML subtree filter
 - `--filter-xpath <expression>`: XPath expression for filtering
 - `--xpath-namespaces <prefix=uri>`: Namespace declarations for XPath filtering (can be specified multiple times)
+- `--format <format>`: Output format (raw-xml, xml, json, acton-gdata, acton-adata) (default: raw-xml)
 - `--output <file>`: Output file (if not specified, prints to stdout)
 
 #### Get Schema
