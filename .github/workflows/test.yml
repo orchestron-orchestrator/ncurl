@@ -1,0 +1,40 @@
+name: Test
+
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actonlang/setup-acton@v1
+        with:
+          channel: 'tip'
+      - name: "Check out repository code"
+        uses: actions/checkout@v4
+      - run: acton build --dev
+      - name: "Start notconf in background"
+        run: |
+          docker run -td --name notconf --publish 42830:830 ghcr.io/notconf/notconf
+      - run: acton test
+      - name: "Test ncurl list-schemas"
+        run: ./ncurl list-schemas
+      - name: "Test ncurl get-config"
+        run: ./ncurl get-config
+      - name: "Test ncurl get-config with subtree filter"
+        run: ./ncurl get-config --filter-subtree '<netconf-server xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-server"/>'
+      - name: "Test ncurl get-config and save to file"
+        run: |
+          ./ncurl get-config --output test-config.xml
+          test -f test-config.xml
+      - name: "Test ncurl get-schema for specific schema"
+        run: ./ncurl get-schema ietf-netconf-monitoring
+      - name: "Test ncurl get-schema for all schemas"
+        run: ./ncurl get-schema all
+      - name: "Test ncurl verbose mode"
+        run: ./ncurl --verbose list-schemas
+      # TODO: There is a problem with YANG compiler/parser with notconf (netopeer2) schemas
+      # This test is expected to fail until the issue is resolved
+      - name: "Test ncurl get-config with JSON format"
+        run: ./ncurl get-config --format json
+        continue-on-error: true
