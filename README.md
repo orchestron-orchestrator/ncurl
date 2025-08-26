@@ -1,4 +1,5 @@
 # ncurl - NETCONF URL Tool
+[![REUSE Compliance Check](https://github.com/orchestron-orchestrator/ncurl/actions/workflows/reuse-compliance.yml/badge.svg)](https://github.com/orchestron-orchestrator/ncurl/actions/workflows/reuse-compliance.yml)
 
 A command-line utility for interacting with NETCONF devices, like curl but for NETCONF. Written in [Acton](https://www.acton-lang.org/), ncurl provides a simple interface for common NETCONF operations.
 
