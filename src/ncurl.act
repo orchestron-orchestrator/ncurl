@@ -17,28 +17,6 @@ import yang
 import yang.gen3
 
 
-def _check_rpc_error(result: ?xml.Node) -> ?str:
-    """Check for RPC errors in a NETCONF response.
-
-    Returns None if no errors, or an error message string if errors found.
-    """
-    if result is not None:
-        if result.tag != "rpc-reply":
-            return "Invalid response: expected rpc-reply, got {result.tag}"
-
-        for child in result.children:
-            if child.tag == "rpc-error":
-                error_details = []
-                for error_child in child.children:
-                    if error_child.tag == "error-message" and error_child.text is not None:
-                        error_details.append("message: {error_child.text}")
-                    elif error_child.tag == "error-tag" and error_child.text is not None:
-                        error_details.append("tag: {error_child.text}")
-                    elif error_child.tag == "error-type" and error_child.text is not None:
-                        error_details.append("type: {error_child.text}")
-                return ', '.join(error_details) if len(error_details) > 0 else "Unknown error"
-    else:
-        return "No response received"
 
 
 actor CmdListSchemas(env, args, log_handler):
@@ -59,7 +37,7 @@ actor CmdListSchemas(env, args, log_handler):
         else:
             c.list_schemas(_on_list_schemas)
 
-    def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)]):
+    def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)], error: ?netconf.NetconfError):
         for schema in schemas:
             schemas_found.append(schema)
 
@@ -155,11 +133,10 @@ actor CmdGetConfig(env, args, log_handler):
 
         c.get_config(_on_get_config, source, filter_node)
 
-    def _on_get_config(c: netconf.Client, result: ?xml.Node):
+    def _on_get_config(c: netconf.Client, result: ?xml.Node, error: ?netconf.NetconfError):
         # Check for errors
-        error_msg = _check_rpc_error(result)
-        if error_msg is not None:
-            print("Error getting config: {error_msg}", err=True)
+        if error is not None:
+            print("Error getting config: {error.error_message}", err=True)
             env.exit(1)
 
         # Extract data element
@@ -200,8 +177,17 @@ actor CmdGetConfig(env, args, log_handler):
                 return
             schemas.append(schema_data)
 
-    def _on_schemas_complete():
+    def _on_schemas_complete(error: ?netconf.NetconfError):
         """Called when all schemas have been downloaded"""
+        if error is not None:
+            print("Error fetching schemas: {error.error_message}", err=True)
+            def _close_cb():
+                env.exit(1)
+            if client is not None:
+                client.close(_close_cb)
+            else:
+                env.exit(1)
+            return
         def _close_cb():
             env.exit(1)
 
@@ -274,9 +260,9 @@ actor SchemaGetter(client, log_handler):
     var schemas_to_download: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)] = []
     var current_download_index = 0
     var on_get_schema_cb: ?action(int, int, (identifier: ?str, namespace: ?str, version: ?str, format: ?str), ?str) -> None = None
-    var on_done_cb: ?action() -> None = None
+    var on_done_cb: ?action(?netconf.NetconfError) -> None = None
 
-    def download(on_get_schema: action(int, int, (identifier: ?str, namespace: ?str, version: ?str, format: ?str), ?str) -> None, on_done: action() -> None, identifier_str: str):
+    def download(on_get_schema: action(int, int, (identifier: ?str, namespace: ?str, version: ?str, format: ?str), ?str) -> None, on_done: action(?netconf.NetconfError) -> None, identifier_str: str):
         """Download schemas. If identifier_str is 'all', download all schemas."""
         on_get_schema_cb = on_get_schema
         on_done_cb = on_done
@@ -291,8 +277,14 @@ actor SchemaGetter(client, log_handler):
             schemas_to_download.append((identifier=identifier_str, namespace=None, version=None, format="yang"))
             _download_next_schema()
 
-    def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)]):
+    def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)], error: ?netconf.NetconfError):
         """Handle schema list response"""
+        if error is not None:
+            # Pass error to completion callback
+            if on_done_cb is not None:
+                on_done_cb(error)
+            return
+
         # Only download yang format (not yin) to avoid duplicates
         for schema in schemas:
             if schema.identifier is not None and schema.format == "yang":
@@ -303,9 +295,9 @@ actor SchemaGetter(client, log_handler):
     def _download_next_schema():
         """Download the next schema in the queue"""
         if current_download_index >= len(schemas_to_download):
-            # All schemas downloaded
+            # All schemas downloaded successfully
             if on_done_cb is not None:
-                on_done_cb()
+                on_done_cb(None)
         else:
             schema = schemas_to_download[current_download_index]
 
@@ -322,16 +314,14 @@ actor SchemaGetter(client, log_handler):
             format_str = schema.format if schema.format is not None else "yang"
             client.get_schema(_on_get_schema, ident, schema.version, format_str)
 
-    def _on_get_schema(c: netconf.Client, result: ?xml.Node):
+    def _on_get_schema(c: netconf.Client, result: ?xml.Node, error: ?netconf.NetconfError):
         """Handle individual schema response"""
         if current_download_index < len(schemas_to_download):
             schema = schemas_to_download[current_download_index]
 
-            # Check for errors
-            error_msg = _check_rpc_error(result)
             schema_data: ?str = None
 
-            if error_msg is None:
+            if error is None:
                 # Extract schema data
                 if result is not None:
                     for child in result.children:
@@ -409,8 +399,13 @@ actor CmdGetSchema(env, args, log_handler):
         else:
             print("  Warning: No data received for {schema.identifier}")
 
-    def _on_download_complete():
+    def _on_download_complete(error: ?netconf.NetconfError):
         """Called when all schemas have been downloaded"""
+        if error is not None:
+            print("\nError downloading schemas: {error.error_message}", err=True)
+            env.exit(1)
+            return
+
         print("\nAll schemas downloaded successfully!")
         _close_and_exit()
 
