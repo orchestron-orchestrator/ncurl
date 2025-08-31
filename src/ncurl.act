@@ -206,7 +206,8 @@ actor CmdGetConfig(env, args, log_handler):
                 _output_config(gdata.prsrc())
                 return
             elif format == "acton-adata":
-                print("Note: adata conversion not yet implemented. Outputting raw XML.")
+                _output_config(yang.gen3.pradata(root, gdata, loose=True))
+                return
             elif format == "xml":
                 _output_config(gdata.to_xmlstr())
                 return
