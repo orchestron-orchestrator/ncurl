@@ -4,7 +4,7 @@ on:
   push:
 
 jobs:
-  test:
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actonlang/setup-acton@v1
@@ -12,6 +12,17 @@ jobs:
           channel: 'tip'
       - name: "Check out repository code"
         uses: actions/checkout@v4
+      - name: "Cache acton stuff"
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/acton
+            out
+          # Hacky cache update:
+          # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
+          key: acton-${{ github.run_id }}
+          restore-keys: |
+            acton
       - run: acton build --dev
       - name: "Start notconf in background"
         run: |
@@ -38,3 +49,55 @@ jobs:
       - name: "Test ncurl get-config with JSON format"
         run: ./ncurl get-config --format json
         continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncurl-linux-x86_64
+          path: out/bin/ncurl
+      - run: make build-linux-aarch64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncurl-linux-aarch64
+          path: out/bin/ncurl
+      - run: make build-macos-aarch64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncurl-macos-aarch64
+          path: out/bin/ncurl
+
+  release:
+    # Only run on the main branch
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      # Required for uploading release assets
+      contents: write
+    needs: build-and-test
+    env:
+      TAG: tip
+    steps:
+      - name: "Check out repository code"
+        uses: actions/checkout@v4
+      - name: Delete tag
+        run: gh release delete ${{ env.TAG }} --cleanup-tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Download all binary artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ncurl-*
+      - name: "Compress binary artifacts"
+        run: |
+          tar -czf ncurl-linux-x86_64.tar.gz -C ncurl-linux-x86_64 ncurl
+          tar -czf ncurl-linux-aarch64.tar.gz -C ncurl-linux-aarch64 ncurl
+          tar -czf ncurl-macos-aarch64.tar.gz -C ncurl-macos-aarch64 ncurl
+      - name: "Upload artifacts as release packages"
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "ncurl-*.tar.gz"
+          draft: false
+          prerelease: true
+          name: ${{ env.TAG }}
+          tag: ${{ env.TAG }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          replacesArtifacts: true
