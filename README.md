@@ -35,11 +35,11 @@ align with ncurl defaults:
 # Start a notconf server
 docker run -td --name notconf --rm --publish 42830:830 ghcr.io/notconf/notconf
 
-# List available schemas
-./ncurl list-schemas
+# List available schemas (--insecure skips SSH host key verification for testing)
+./ncurl --insecure list-schemas
 
 # Get running configuration
-./ncurl get-config
+./ncurl --insecure get-config
 ```
 
 ## Usage
@@ -56,7 +56,10 @@ docker run -td --name notconf --rm --publish 42830:830 ghcr.io/notconf/notconf
 - `--port <port>`: NETCONF server port (default: 42830)
 - `--username <username>`: Username for authentication (default: admin)
 - `--password <password>`: Password for authentication (default: admin)
+- `--insecure`: Skip SSH host key verification (useful for testing/development)
 - `--verbose`: Enable verbose logging for SSH/NETCONF client debugging
+
+**Note:** All examples use the `--insecure` flag to skip SSH host key verification. This is convenient for testing and development environments where devices may have self-signed certificates or changing host keys because of container restarts.
 
 ### Commands
 
@@ -65,7 +68,7 @@ docker run -td --name notconf --rm --publish 42830:830 ghcr.io/notconf/notconf
 List all available schemas from a NETCONF server:
 
 ```bash
-./ncurl --host router.example.com list-schemas
+./ncurl --insecure --host router.example.com list-schemas
 ```
 
 #### Get Configuration
@@ -74,28 +77,28 @@ Retrieve configuration from a NETCONF datastore:
 
 ```bash
 # Get entire running configuration
-./ncurl --host router.example.com get-config
+./ncurl --insecure --host router.example.com get-config
 
 # Get startup configuration
-./ncurl --host router.example.com get-config --source startup
+./ncurl --insecure --host router.example.com get-config --source startup
 
 # Apply subtree filter
-./ncurl --host router.example.com get-config \
+./ncurl --insecure --host router.example.com get-config \
   --filter-subtree '<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>'
 
 # Apply XPath filter with namespaces
-./ncurl --host router.example.com get-config \
+./ncurl --insecure --host router.example.com get-config \
   --filter-xpath '/if:interfaces/if:interface[if:name="eth0"]' \
   --xpath-namespaces 'if=urn:ietf:params:xml:ns:yang:ietf-interfaces'
 
 # Save configuration to file
-./ncurl --host router.example.com get-config --output config.xml
+./ncurl --insecure --host router.example.com get-config --output config.xml
 
 # Get configuration in JSON format
-./ncurl --host router.example.com get-config --format json
+./ncurl --insecure --host router.example.com get-config --format json
 
 # Get configuration as Acton GData
-./ncurl --host router.example.com get-config --format acton-gdata
+./ncurl --insecure --host router.example.com get-config --format acton-gdata
 ```
 
 **Options:**
@@ -112,19 +115,19 @@ Download schema(s) from a NETCONF server:
 
 ```bash
 # Download a specific schema
-./ncurl --host router.example.com get-schema ietf-interfaces
+./ncurl --insecure --host router.example.com get-schema ietf-interfaces
 
 # Download a specific version
-./ncurl --host router.example.com get-schema ietf-interfaces --version 2018-02-20
+./ncurl --insecure --host router.example.com get-schema ietf-interfaces --version 2018-02-20
 
 # Download all available schemas
-./ncurl --host router.example.com get-schema all
+./ncurl --insecure --host router.example.com get-schema all
 
 # Specify output directory
-./ncurl --host router.example.com get-schema all --output-dir yang-models
+./ncurl --insecure --host router.example.com get-schema all --output-dir yang-models
 
 # Download in YIN format instead of YANG
-./ncurl --host router.example.com get-schema ietf-interfaces --format yin
+./ncurl --insecure --host router.example.com get-schema ietf-interfaces --format yin
 ```
 
 **Arguments:**
