@@ -44,11 +44,8 @@ jobs:
         run: ./ncurl get-schema all
       - name: "Test ncurl verbose mode"
         run: ./ncurl --verbose list-schemas
-      # TODO: There is a problem with YANG compiler/parser with notconf (netopeer2) schemas
-      # This test is expected to fail until the issue is resolved
       - name: "Test ncurl get-config with JSON format"
         run: ./ncurl get-config --format json
-        continue-on-error: true
       - uses: actions/upload-artifact@v4
         with:
           name: ncurl-linux-x86_64
