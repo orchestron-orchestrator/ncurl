@@ -24,6 +24,24 @@ ncurl currently supports the following NETCONF operations:
 acton build
 ```
 
+## Quick Start with notconf
+
+The easiest way to test ncurl is using
+[notconf](https://github.com/notconf/notconf), a NETCONF server for testing. The
+published NETCONF server port (42830) and default credentials (admin/admin)
+align with ncurl defaults:
+
+```bash
+# Start a notconf server
+docker run -td --name notconf --rm --publish 42830:830 ghcr.io/notconf/notconf
+
+# List available schemas
+./ncurl list-schemas
+
+# Get running configuration
+./ncurl get-config
+```
+
 ## Usage
 
 ### Basic Syntax
