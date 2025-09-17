@@ -173,7 +173,11 @@ actor CmdGetConfig(env, args, log_handler):
         """Collect downloaded schemas into the list"""
         if schema_data is not None:
             schema_identifier = schema.identifier
-            if schema_identifier is not None and schema_identifier.startswith("junos-rpc"):
+            # Skip models:
+            # - junos-rpc: all RPC modules use an undefined grouping?!
+            # - openconfig: on Cisco IOS XRd openconfig-mpls.yang doesn't compile because submodule overrides prefix of parent import
+            if schema_identifier is not None and (schema_identifier.startswith("junos-rpc") or "openconfig" in schema_identifier):
+                print("Skipping {schema_identifier}", err=True)
                 return
             schemas.append(schema_data)
 
