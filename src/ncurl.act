@@ -10,6 +10,7 @@ import argparse
 import file
 import logging
 import netconf
+import time
 import xml
 
 
@@ -173,7 +174,11 @@ actor CmdGetConfig(env, args, log_handler):
         """Collect downloaded schemas into the list"""
         if schema_data is not None:
             schema_identifier = schema.identifier
-            if schema_identifier is not None and schema_identifier.startswith("junos-rpc"):
+            # Skip models:
+            # - junos-rpc: all RPC modules use an undefined grouping?!
+            # - openconfig: on Cisco IOS XRd openconfig-mpls.yang doesn't compile because submodule overrides prefix of parent import
+            if schema_identifier is not None and (schema_identifier.startswith("junos-rpc") or "openconfig" in schema_identifier):
+                print("Skipping {schema_identifier}", err=True)
                 return
             schemas.append(schema_data)
 
@@ -193,11 +198,14 @@ actor CmdGetConfig(env, args, log_handler):
 
         print("Retrieved {len(schemas)} schemas")
 
+        t0 = time.Stopwatch()
         root = yang.compile(schemas)
-        print("Compiled schema")
+        print("Compiled schemas in {t0.elapsed().to_float()}s")
+        t0.reset()
         c = config_xml
         if c is not None:
             gdata = yang.gen3.from_xml(root, c, loose=True)
+            print("Parsed config to gdata in {t0.elapsed().to_float()}s")
 
             if format == "json":
                 _output_config(gdata.to_json())
