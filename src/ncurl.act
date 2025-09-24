@@ -154,7 +154,7 @@ actor CmdGetConfig(env, args, log_handler):
         # If format is not raw-xml, fetch schemas
         if format != "raw-xml":
             print("Fetching schemas for data conversion...")
-            schema_getter = SchemaGetter(c, log_handler)
+            schema_getter = netconf.SchemaGetter(c)
             schema_getter.download(_on_schema_download, _on_schemas_complete, "all")
         else:
             # For raw-xml, just output the config
@@ -170,17 +170,20 @@ actor CmdGetConfig(env, args, log_handler):
                     config = str(config_xml.text)
                 _output_config(config)
 
-    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: ?str, namespace: ?str, version: ?str, format: ?str), schema_data: ?str):
+    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: str, namespace: ?str, version: ?str, format: str), schema_data: ?str, error: ?netconf.NetconfError):
         """Collect downloaded schemas into the list"""
-        if schema_data is not None:
-            schema_identifier = schema.identifier
+        if error is not None:
+            print("Error downloading {schema.identifier}: {error}", err=True)
+        elif schema_data is not None:
             # Skip models:
             # - junos-rpc: all RPC modules use an undefined grouping?!
             # - openconfig: on Cisco IOS XRd openconfig-mpls.yang doesn't compile because submodule overrides prefix of parent import
-            if schema_identifier is not None and (schema_identifier.startswith("junos-rpc") or "openconfig" in schema_identifier):
-                print("Skipping {schema_identifier}", err=True)
+            if schema.identifier.startswith("junos-rpc") or "openconfig" in schema.identifier:
+                print("Skipping {schema.identifier}", err=True)
                 return
             schemas.append(schema_data)
+        else:
+            print("Warning: no schema data received for {schema.identifier}", err=True)
 
     def _on_schemas_complete(error: ?netconf.NetconfError):
         """Called when all schemas have been downloaded"""
@@ -263,88 +266,6 @@ actor CmdGetConfig(env, args, log_handler):
                       skip_host_key_check=skip_host_key_check,
                       log_handler=log_handler)
 
-actor SchemaGetter(client, log_handler):
-    """Helper actor for downloading schemas from NETCONF server."""
-
-    var schemas_to_download: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)] = []
-    var current_download_index = 0
-    var on_get_schema_cb: ?action(int, int, (identifier: ?str, namespace: ?str, version: ?str, format: ?str), ?str) -> None = None
-    var on_done_cb: ?action(?netconf.NetconfError) -> None = None
-
-    def download(on_get_schema: action(int, int, (identifier: ?str, namespace: ?str, version: ?str, format: ?str), ?str) -> None, on_done: action(?netconf.NetconfError) -> None, identifier_str: str):
-        """Download schemas. If identifier_str is 'all', download all schemas."""
-        on_get_schema_cb = on_get_schema
-        on_done_cb = on_done
-        schemas_to_download = []
-        current_download_index = 0
-
-        if identifier_str == "all":
-            # Get list of all schemas first
-            client.list_schemas(_on_list_schemas)
-        else:
-            # Download single schema
-            schemas_to_download.append((identifier=identifier_str, namespace=None, version=None, format="yang"))
-            _download_next_schema()
-
-    def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: ?str, namespace: ?str, version: ?str, format: ?str)], error: ?netconf.NetconfError):
-        """Handle schema list response"""
-        if error is not None:
-            # Pass error to completion callback
-            if on_done_cb is not None:
-                on_done_cb(error)
-            return
-
-        # Only download yang format (not yin) to avoid duplicates
-        for schema in schemas:
-            if schema.identifier is not None and schema.format == "yang":
-                schemas_to_download.append(schema)
-
-        _download_next_schema()
-
-    def _download_next_schema():
-        """Download the next schema in the queue"""
-        if current_download_index >= len(schemas_to_download):
-            # All schemas downloaded successfully
-            if on_done_cb is not None:
-                on_done_cb(None)
-        else:
-            schema = schemas_to_download[current_download_index]
-
-            schema_identifier = schema.identifier
-            if schema_identifier is None:
-                # Skip schema with no identifier
-                current_download_index += 1
-                _download_next_schema()
-                return
-
-            ident = schema_identifier if schema_identifier is not None else ""
-
-            # Use "yang" as default format if not specified
-            format_str = schema.format if schema.format is not None else "yang"
-            client.get_schema(_on_get_schema, ident, schema.version, format_str)
-
-    def _on_get_schema(c: netconf.Client, result: ?xml.Node, error: ?netconf.NetconfError):
-        """Handle individual schema response"""
-        if current_download_index < len(schemas_to_download):
-            schema = schemas_to_download[current_download_index]
-
-            schema_data: ?str = None
-
-            if error is None:
-                # Extract schema data
-                if result is not None:
-                    for child in result.children:
-                        if child.tag == "data":
-                            schema_data = child.text
-                            break
-
-            # Call the callback with current progress and schema data
-            if on_get_schema_cb is not None:
-                on_get_schema_cb(current_download_index, len(schemas_to_download), schema, schema_data)
-
-        # Move to next schema
-        current_download_index += 1
-        _download_next_schema()
 
 actor CmdGetSchema(env, args, log_handler):
     """Download schema(s) from a NETCONF server"""
@@ -361,25 +282,26 @@ actor CmdGetSchema(env, args, log_handler):
     output_dir = args.get_str("output-dir")
 
     var client: ?netconf.Client = None
-    var schema_getter: ?SchemaGetter = None
+    var schema_getter: ?netconf.SchemaGetter = None
 
     def _on_connect(c: netconf.Client, e: ?Exception):
         if e is not None:
             print("Error: Failed to connect: {e}", err=True)
             env.exit(1)
         else:
-            schema_getter = SchemaGetter(c, log_handler)
+            schema_getter = netconf.SchemaGetter(c)
 
             # Start download using SchemaGetter
             sg = schema_getter
             if sg is not None:
                 sg.download(_on_schema_download, _on_download_complete, identifier_str)
 
-    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: ?str, namespace: ?str, version: ?str, format: ?str), schema_data: ?str):
+    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: ?str, namespace: ?str, version: ?str, format: ?str), schema_data: ?str, error: ?netconf.NetconfError):
         """Handle each downloaded schema"""
-        print("Downloading [{current_index + 1}/{total_schemas}]: {schema.identifier}")
-
-        if schema_data is not None:
+        print("Downloading [{current_index}/{total_schemas}]: {schema.identifier}")
+        if error is not None:
+            print("  {error}")
+        elif schema_data is not None:
             # Build proper filename with identifier and version
             filename = "{schema.identifier}"
             if schema.version is not None:
