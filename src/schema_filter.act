@@ -1,0 +1,166 @@
+"""Schema filtering support for YANG module sets
+
+This module provides pattern-based filtering for YANG schemas, allowing
+users to select specific sets of modules (classic, unified-model, openconfig, etc.)
+to avoid conflicts and reduce compilation overhead.
+"""
+
+import re
+
+class ModuleSet:
+    """Represents a set of YANG modules defined by include/exclude patterns"""
+
+    name: str
+    description: str
+    include_patterns: list[str]
+    exclude_patterns: list[str]
+
+    def __init__(self, name: str, description: str, include_patterns: list[str]=[], exclude_patterns: list[str]=[]):
+        self.name = name
+        self.description = description
+        self.include_patterns = include_patterns
+        self.exclude_patterns = exclude_patterns
+
+    def matches(self, module_name: str) -> bool:
+        """Check if a module name matches this module set's patterns"""
+        # First check if it matches any include pattern
+        if len(self.include_patterns) == 0:
+            matched = True
+        else:
+            matched = False
+            for pattern in self.include_patterns:
+                if re.match(pattern, module_name) is not None:
+                    matched = True
+                    break
+
+        if not matched:
+            return False
+
+        # Then check it doesn't match any exclude pattern
+        for pattern in self.exclude_patterns:
+            if re.match(pattern, module_name) is not None:
+                return False
+
+        return True
+
+
+# Define standard module sets
+CLASSIC = ModuleSet(
+    "classic",
+    "Cisco IOS XR Classic configuration models",
+    include_patterns=["^Cisco-IOS-XR-", "^tailf-", "^cisco-semver"],
+    exclude_patterns=["^Cisco-IOS-XR-um-"]
+)
+
+UNIFIED_MODEL = ModuleSet(
+    "unified-model",
+    "Cisco IOS XR Unified Model with base types",
+    include_patterns=["^Cisco-IOS-XR-um-", "^Cisco-IOS-XR-types", "^Cisco-IOS-XR-.*-datatypes", "^ietf-", "^tailf-", "^cisco-semver"],
+    exclude_patterns=["^ietf-interfaces"]
+)
+
+OPENCONFIG = ModuleSet(
+    "openconfig",
+    "OpenConfig standard models",
+    include_patterns=["^openconfig-"]
+)
+
+IETF = ModuleSet(
+    "ietf",
+    "IETF standard models",
+    include_patterns=["^ietf-"]
+)
+
+STANDARDS_ONLY = ModuleSet(
+    "standards",
+    "Industry standard models only (IETF + OpenConfig)",
+    include_patterns=["^ietf-", "^openconfig-"]
+)
+
+CISCO_NATIVE = ModuleSet(
+    "cisco-native",
+    "All Cisco native models (Classic + UM, no standards)",
+    include_patterns=["^Cisco-IOS-XR-", "^tailf-", "^cisco-semver"]
+)
+
+ALL_MODULES = ModuleSet(
+    "all",
+    "All available models (default)"
+)
+
+# Registry of all available module sets
+MODULE_SETS = {
+    "classic": CLASSIC,
+    "unified-model": UNIFIED_MODEL,
+    "openconfig": OPENCONFIG,
+    "ietf": IETF,
+    "standards": STANDARDS_ONLY,
+    "cisco-native": CISCO_NATIVE,
+    "all": ALL_MODULES
+}
+
+
+def get_module_set(name: str) -> ?ModuleSet:
+    """Get a module set by name, returns None if not found"""
+    return MODULE_SETS.get(name)
+
+
+def should_include_module(module_name: str, module_set_names: list[str]) -> bool:
+    """Check if a module should be included based on selected module sets"""
+    # If no sets specified, include everything
+    if len(module_set_names) == 0:
+        return True
+
+    # Check if module matches any of the selected sets
+    for set_name in module_set_names:
+        module_set = get_module_set(set_name)
+        if module_set is not None and module_set.matches(module_name):
+            return True
+
+    return False
+
+
+def filter_schemas(
+    schemas: list[(identifier: str, namespace: ?str, version: ?str, format: str)],
+    module_set_names: list[str]
+) -> list[(identifier: str, namespace: ?str, version: ?str, format: str)]:
+    """Filter a list of schemas based on selected module sets"""
+    if len(module_set_names) == 0:
+        return schemas
+
+    filtered = []
+    for schema in schemas:
+        if should_include_module(schema.identifier, module_set_names):
+            filtered.append(schema)
+
+    return filtered
+
+
+def validate_module_sets(set_names: list[str]) -> list[str]:
+    """Validate module set names and check for known incompatibilities"""
+    warnings = []
+
+    # Check all set names are valid
+    for name in set_names:
+        if get_module_set(name) is None:
+            warnings.append("Unknown module set: {name}")
+
+    # Check for known incompatibilities
+    if "classic" in set_names and "unified-model" in set_names:
+        warnings.append("Warning: Classic and Unified Model may have conflicting definitions")
+
+    if "classic" in set_names and "openconfig" in set_names:
+        warnings.append("Warning: Classic and OpenConfig may have overlapping namespaces for common features")
+
+    if "unified-model" in set_names and "openconfig" in set_names:
+        warnings.append("Warning: Unified Model and OpenConfig may have overlapping namespaces")
+
+    return warnings
+
+
+def get_module_set_names() -> str:
+    """Get a comma-separated string of available module set names for help text"""
+    names = []
+    for key in MODULE_SETS:
+        names.append(key)
+    return ", ".join(sorted(names))
