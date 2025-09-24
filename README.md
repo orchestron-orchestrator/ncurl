@@ -8,6 +8,7 @@ A command-line utility for interacting with NETCONF devices, like curl but for N
 ncurl currently supports the following NETCONF operations:
 
 - **get-config**: Retrieve configuration from a NETCONF datastore with optional filtering
+- **edit-config**: Edit configuration in a NETCONF datastore
 - **list-schemas**: List all available schemas from a NETCONF server
 - **get-schema**: Download individual or all schemas from a NETCONF server
 
@@ -111,6 +112,42 @@ Retrieve configuration from a NETCONF datastore:
 - `--xpath-namespaces <prefix=uri>`: Namespace declarations for XPath filtering (can be specified multiple times)
 - `--format <format>`: Output format (raw-xml, xml, json, acton-gdata, acton-adata) (default: raw-xml)
 - `--output <file>`: Output file (if not specified, prints to stdout)
+
+#### Edit Configuration
+
+Edit configuration in a NETCONF datastore:
+
+```bash
+# Edit candidate configuration with XML from file
+./ncurl --insecure --host router.example.com edit-config config.xml
+
+# Edit running configuration directly
+./ncurl --insecure --host router.example.com edit-config --target running config.xml
+
+# Read configuration from stdin (end with two empty lines or Ctrl+D)
+./ncurl --insecure --host router.example.com edit-config -
+
+# Use replace operation instead of merge
+./ncurl --insecure --host router.example.com edit-config --default-operation replace config.xml
+```
+
+**Arguments:**
+- `config`: Configuration XML file path, or `-` to read from stdin
+
+**Options:**
+- `--target <datastore>`: Configuration datastore to edit (running, startup, candidate) (default: candidate)
+- `--default-operation <operation>`: Default operation for config elements (merge, replace, none) (default: merge)
+
+**Example Configuration XML:**
+```xml
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+  <interface>
+    <name>eth1</name>
+    <description>Updated via ncurl</description>
+    <enabled>true</enabled>
+  </interface>
+</interfaces>
+```
 
 #### Get Schema
 

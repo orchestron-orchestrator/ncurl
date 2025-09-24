@@ -333,6 +333,88 @@ actor CmdGetConfig(env, args, log_handler):
                       log_handler=log_handler)
 
 
+actor CmdEditConfig(env, args, log_handler):
+    """Edit configuration on a NETCONF server"""
+
+    host = args.get_str("host")
+    port = args.get_int("port")
+    username = args.get_str("username")
+    password = args.get_str("password")
+    skip_host_key_check = args.get_bool("insecure")
+    target = args.get_str("target")
+    default_operation = args.get_str("default-operation")
+    config_source = args.get_str("config")
+
+    var config_xml = ""
+    var client: ?netconf.Client = None
+    var stdin_buffer: list[str] = []
+    var empty_line_count = 0
+
+    def _on_connect(c: netconf.Client, e: ?Exception):
+        if e is not None:
+            print("Error: Failed to connect: {e}", err=True)
+            env.exit(1)
+
+        client = c
+        _do_edit_config()
+
+    def _on_stdin(input: str):
+        # Check for empty input (just newline) or special marker
+        # TODO: propagate EOF from Acton, handle it here ...
+        if input == "\n":
+            empty_line_count += 1
+            if empty_line_count >= 2:
+                # Two empty lines means end of input
+                config_xml = "".join(stdin_buffer).strip()
+                _connect_and_edit()
+                return
+            stdin_buffer.append(input)
+        else:
+            empty_line_count = 0
+            stdin_buffer.append(input)
+
+    def _connect_and_edit():
+        netconf.Client(env.auth,
+                          on_connect=_on_connect,
+                          on_notif=None,
+                          address=host,
+                          username=username,
+                          key=None,
+                          password=password,
+                          port=port,
+                          skip_host_key_check=skip_host_key_check,
+                          log_handler=log_handler)
+
+    def _do_edit_config():
+        if client is not None:
+            client.edit_config(config_xml, _on_edit_config, target, default_operation=default_operation if default_operation != "merge" else None)
+
+    def _on_edit_config(c: netconf.Client, error: ?netconf.NetconfError):
+        if error is not None:
+            print("Error editing config: {error.error_message}", err=True)
+            env.exit(1)
+        else:
+            print("Configuration successfully applied to {target} datastore")
+
+        def _close_cb():
+            env.exit(0 if error is None else 1)
+
+        c.close(_close_cb)
+
+    if config_source == "-":
+        print("Reading configuration from stdin (enter empty line or press Ctrl+D to finish)...", err=True)
+        env.stdin_install(on_stdin=_on_stdin)
+    else:
+        try:
+            f = file.ReadFile(file.ReadFileCap(file.FileCap(env.auth)), config_source)
+            config_xml = f.read().decode()
+            f.close()
+            _connect_and_edit()
+        except Exception as ex:
+            print("Error reading file '{config_source}': {ex}", err=True)
+            env.exit(1)
+
+
 actor CmdGetSchema(env, args, log_handler):
     """Download schema(s) from a NETCONF server"""
 
@@ -486,6 +568,13 @@ actor main(env):
             logh.add_sink(logging.ConsoleSink())
         CmdGetSchema(env, args, logh)
 
+    def cmd_edit_config(args):
+        """Command handler for edit-config"""
+        if args.get_bool("verbose"):
+            logh.set_output_level(logging.TRACE)
+            logh.add_sink(logging.ConsoleSink())
+        CmdEditConfig(env, args, logh)
+
     def _parse_args():
         p = argparse.Parser()
 
@@ -517,6 +606,11 @@ actor main(env):
         module_sets_help = "Module set(s) to include ({schema_filter.get_module_set_names()})"
         p_get_schema.add_option("module-set", "strlist", "+", [], module_sets_help)
         p_get_schema.add_option("module", "strlist", "+", [], "Module(s) to include (optionally with version as module@version)")
+
+        p_edit_config = p.add_cmd("edit-config", "Edit configuration on NETCONF server", cmd_edit_config)
+        p_edit_config.add_option("target", "str", "?", "candidate", "Configuration datastore (running, startup, candidate)")
+        p_edit_config.add_option("default-operation", "str", "?", "merge", "Default operation (merge, replace, none)")
+        p_edit_config.add_arg("config", "Configuration XML, or - to read from stdin", False)
 
         return p.parse(env.argv)
 
