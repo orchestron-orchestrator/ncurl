@@ -2,13 +2,13 @@
     "dependencies": {
         "netconf": {
             "repo_url": "https://github.com/orchestron-orchestrator/netconf.git",
-            "url": "https://github.com/orchestron-orchestrator/netconf/archive/9eb4963b2cc19c94a9811f101929e334ccb85e2c.zip",
-            "hash": "1220e8563054d5f3865584ba45e5777c652568084e6fac95c58933896228d70ff2af"
+            "url": "https://github.com/orchestron-orchestrator/netconf/archive/9a2ca0a4bddadaca989a2c7ce57525a7b4531c58.zip",
+            "hash": "122001998709cee8d69937df65ebb51ace2dfc49897409d620f647f75d4b9775735e"
         },
         "yang": {
             "repo_url": "https://github.com/orchestron-orchestrator/acton-yang.git",
-            "url": "https://github.com/orchestron-orchestrator/acton-yang/archive/4384ace751a613c77fb4b745b9da758f4c36d5cb.zip",
-            "hash": "1220480c25574de80c2ec5c4b7c4db8f7f6ccdcd970824dc8dea3e06976dc185076f"
+            "url": "https://github.com/orchestron-orchestrator/acton-yang/archive/55eef3096d211ac8f6263f6bbb5fa6d406f50052.zip",
+            "hash": "12204872f09152937aa7bfded20dc4ab22d6b7555c6f9104550732733edcecaf2a7c"
         }
     },
     "zig_dependencies": {}
