@@ -46,6 +46,8 @@ jobs:
         run: ./ncurl --verbose list-schemas
       - name: "Test ncurl get-config with JSON format"
         run: ./ncurl get-config --format json
+      - name: "Test ncurl get-config with explicit module set"
+        run: ./ncurl get-config --format acton-adata --module ietf-netconf-acm --module ietf-yang-types
       - uses: actions/upload-artifact@v4
         with:
           name: ncurl-linux-x86_64
