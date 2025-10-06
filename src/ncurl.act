@@ -154,8 +154,7 @@ actor CmdGetConfig(env, args, log_handler):
         # If format is not raw-xml, fetch schemas
         if format != "raw-xml":
             print("Fetching schemas for data conversion...")
-            schema_getter = netconf.SchemaGetter(c)
-            schema_getter.download(_on_schema_download, _on_schemas_complete, "all")
+            c.list_schemas(_on_list_schemas)
         else:
             # For raw-xml, just output the config
             if config_xml is not None:
@@ -170,17 +169,38 @@ actor CmdGetConfig(env, args, log_handler):
                     config = str(config_xml.text)
                 _output_config(config)
 
-    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: str, namespace: ?str, version: ?str, format: str), schema_data: ?str, error: ?netconf.NetconfError):
+    def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: str, namespace: str, version: str, format: str)], error: ?netconf.NetconfError):
+        if error is not None:
+            print("Error: Failed to list schemas: {error}", err=True)
+            env.exit(1)
+            return
+
+        # Filter only YANG schemas because we only compile YANG
+        # Skip models:
+        # - junos-rpc: all RPC modules use an undefined grouping?!
+        schemas_to_download = []
+        for s in schemas:
+            if s.format != "yang":
+                pass
+            elif s.identifier.startswith("junos-rpc"):
+                print("Skipping {s.identifier}: undefined grouping common-forwarding", err=True)
+            else:
+                schemas_to_download.append((identifier=s.identifier, version=s.version, format=s.format))
+
+        if len(schemas_to_download) == 0:
+            print("No schemas available for download", err=True)
+            env.exit(1)
+            return
+
+        print("Found {len(schemas_to_download)} schemas to download")
+        sg = netconf.SchemaGetter(c)
+        sg.download(_on_schema_download, _on_schemas_complete, schemas_to_download)
+
+    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: str, version: ?str, format: ?str), schema_data: ?str, error: ?netconf.NetconfError):
         """Collect downloaded schemas into the list"""
         if error is not None:
             print("Error downloading {schema.identifier}: {error}", err=True)
         elif schema_data is not None:
-            # Skip models:
-            # - junos-rpc: all RPC modules use an undefined grouping?!
-            # - openconfig: on Cisco IOS XRd openconfig-mpls.yang doesn't compile because submodule overrides prefix of parent import
-            if schema.identifier.startswith("junos-rpc") or "openconfig" in schema.identifier:
-                print("Skipping {schema.identifier}", err=True)
-                return
             schemas.append(schema_data)
         else:
             print("Warning: no schema data received for {schema.identifier}", err=True)
@@ -289,14 +309,35 @@ actor CmdGetSchema(env, args, log_handler):
             print("Error: Failed to connect: {e}", err=True)
             env.exit(1)
         else:
-            schema_getter = netconf.SchemaGetter(c)
+            client = c  # Store client for later use
+            if identifier_str == "all":
+                # List all schemas first
+                c.list_schemas(_on_list_schemas)
+            else:
+                # Download single schema
+                schema_getter = netconf.SchemaGetter(c)
+                schemas_to_download = [(identifier=identifier_str, version=version, format=format)]
+                sg = schema_getter
+                if sg is not None:
+                    sg.download(_on_schema_download, _on_download_complete, schemas_to_download)
 
-            # Start download using SchemaGetter
-            sg = schema_getter
-            if sg is not None:
-                sg.download(_on_schema_download, _on_download_complete, identifier_str)
+    def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: str, namespace: str, version: str, format: str)], error: ?netconf.NetconfError):
+        if error is not None:
+            print("Error: Failed to list schemas: {error}", err=True)
+            env.exit(1)
+            return
 
-    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: ?str, namespace: ?str, version: ?str, format: ?str), schema_data: ?str, error: ?netconf.NetconfError):
+        # TODO: can the compiler "convert" the schemas argument list[(identifier: str, namespace: str, version: str, format: str)]
+        # to a list[(identifier: str, version: ?str, format: ?str)] where the namespace field is missing the other two are optional?
+        schemas_to_download = [(identifier=s.identifier, version=s.version, format=s.format) for s in schemas]
+
+        print("Found {len(schemas_to_download)} schemas to download")
+        schema_getter = netconf.SchemaGetter(c)
+        sg = schema_getter
+        if sg is not None:
+            sg.download(_on_schema_download, _on_download_complete, schemas_to_download)
+
+    def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: str, version: ?str, format: ?str), schema_data: ?str, error: ?netconf.NetconfError):
         """Handle each downloaded schema"""
         print("Downloading [{current_index}/{total_schemas}]: {schema.identifier}")
         if error is not None:
@@ -304,9 +345,9 @@ actor CmdGetSchema(env, args, log_handler):
         elif schema_data is not None:
             # Build proper filename with identifier and version
             filename = "{schema.identifier}"
-            if schema.version is not None:
+            if schema.version is not None and schema.version != "":
                 filename = "{schema.identifier}@{schema.version}"
-            if schema.format is not None:
+            if schema.format is not None and schema.format != "":
                 filename = "{filename}.{schema.format}"
             else:
                 filename = "{filename}.yang"
