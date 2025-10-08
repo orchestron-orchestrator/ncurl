@@ -48,8 +48,8 @@ class ModuleSet:
 CISCO_XR_CLASSIC = ModuleSet(
     "cisco-xr-classic",
     "Cisco IOS XR Classic configuration models",
-    include_patterns=["^Cisco-IOS-XR-", "^tailf-", "^cisco-semver"],
-    exclude_patterns=["^Cisco-IOS-XR-um-"]
+    include_patterns=["^Cisco-IOS-XR-", "^tailf-", "^cisco-semver", "^ietf-"],
+    exclude_patterns=["^ietf-interfaces", "^Cisco-IOS-XR-um-", "^Cisco-IOS-XR-openconfig"]
 )
 
 CISCO_XR_UNIFIED_MODEL = ModuleSet(
@@ -68,13 +68,7 @@ OPENCONFIG = ModuleSet(
 IETF = ModuleSet(
     "ietf",
     "IETF standard models",
-    include_patterns=["^ietf-"]
-)
-
-STANDARDS_ONLY = ModuleSet(
-    "standards",
-    "Industry standard models only (IETF + OpenConfig)",
-    include_patterns=["^ietf-", "^openconfig-"]
+    include_patterns=["^ietf-", "^iana-"]
 )
 
 ALL_MODULES = ModuleSet(
@@ -88,14 +82,8 @@ MODULE_SETS = {
     "cisco-xr-unified-model": CISCO_XR_UNIFIED_MODEL,
     "openconfig": OPENCONFIG,
     "ietf": IETF,
-    "standards": STANDARDS_ONLY,
     "all": ALL_MODULES
 }
-
-
-def get_module_set(name: str) -> ?ModuleSet:
-    """Get a module set by name, returns None if not found"""
-    return MODULE_SETS.get(name)
 
 
 def should_include_module(module_name: str, module_set_names: list[str]) -> bool:
@@ -106,7 +94,7 @@ def should_include_module(module_name: str, module_set_names: list[str]) -> bool
 
     # Check if module matches any of the selected sets
     for set_name in module_set_names:
-        module_set = get_module_set(set_name)
+        module_set = MODULE_SETS.get(set_name)
         if module_set is not None and module_set.matches(module_name):
             return True
 
@@ -135,7 +123,7 @@ def validate_module_sets(set_names: list[str]) -> list[str]:
 
     # Check all set names are valid
     for name in set_names:
-        if get_module_set(name) is None:
+        if name not in MODULE_SETS:
             warnings.append("Unknown module set: {name}")
 
     # Check for known incompatibilities

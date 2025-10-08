@@ -38,16 +38,20 @@ jobs:
         run: |
           ./ncurl get-config --output test-config.xml
           test -f test-config.xml
-      - name: "Test ncurl get-schema for specific schema"
-        run: ./ncurl get-schema ietf-netconf-monitoring
       - name: "Test ncurl get-schema for all schemas"
-        run: ./ncurl get-schema all
+        run: ./ncurl get-schema
+      - name: "Test ncurl get-schema for specific module"
+        run: ./ncurl get-schema --module ietf-netconf-monitoring
+      - name: "Test ncurl get-schema for specific module-set"
+        run: ./ncurl get-schema --module-set ietf
       - name: "Test ncurl verbose mode"
         run: ./ncurl --verbose list-schemas
       - name: "Test ncurl get-config with JSON format"
         run: ./ncurl get-config --format json
-      - name: "Test ncurl get-config with explicit module set"
+      - name: "Test ncurl get-config with specific modules"
         run: ./ncurl get-config --format acton-adata --module ietf-netconf-acm --module ietf-yang-types
+      - name: "Test ncurl get-config with specific module-set"
+        run: ./ncurl get-config --format acton-adata --module-set ietf
       - uses: actions/upload-artifact@v4
         with:
           name: ncurl-linux-x86_64
