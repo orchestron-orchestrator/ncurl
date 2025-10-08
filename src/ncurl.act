@@ -19,6 +19,31 @@ import yang.gen3
 import schema_filter
 
 
+def filter_schemas_for_download(schemas: list[(identifier: str, namespace: str, version: str, format: str)], module_sets: list[str]) -> list[(identifier: str, version: ?str, format: ?str)]:
+    """Filter schemas based on module sets"""
+    schemas_to_download = []
+
+    for s in schemas:
+        # Skip non-YANG schemas
+        if s.format != "yang":
+            continue
+        if not schema_filter.should_include_module(s.identifier, module_sets):
+            continue
+        schemas_to_download.append((identifier=s.identifier, version=s.version, format=s.format))
+    return schemas_to_download
+
+
+def build_explicit_schemas_list(explicit_modules: list[str], format: str) -> list[(identifier: str, version: ?str, format: ?str)]:
+    """Build a list of schemas to download from explicit module specifications"""
+    schemas_to_download = []
+    for module in explicit_modules:
+        # Parse module specification (might include version as module@version)
+        if "@" in module:
+            module_parts = module.split("@", 1)
+            schemas_to_download.append((identifier=module_parts[0], version=module_parts[1], format=format))
+        else:
+            schemas_to_download.append((identifier=module, version=None, format=format))
+    return schemas_to_download
 
 
 actor CmdListSchemas(env, args, log_handler):
@@ -168,7 +193,18 @@ actor CmdGetConfig(env, args, log_handler):
         # If format is not raw-xml, fetch schemas
         if format != "raw-xml":
             print("Fetching schemas for data conversion...")
-            c.list_schemas(_on_list_schemas)
+            # Check if explicit modules are provided
+            if len(explicit_modules) > 0:
+                schemas_to_download = build_explicit_schemas_list(explicit_modules, format)
+
+                print("Downloading {len(schemas_to_download)} specified schemas")
+                schema_getter = netconf.SchemaGetter(c)
+                sg = schema_getter
+                if sg is not None:
+                    sg.download(_on_schema_download, _on_schemas_complete, schemas_to_download)
+            else:
+                # List all schemas and filter based on module sets (or download all if no module sets)
+                c.list_schemas(_on_list_schemas)
         else:
             # For raw-xml, just output the config
             if config_xml is not None:
@@ -189,37 +225,7 @@ actor CmdGetConfig(env, args, log_handler):
             env.exit(1)
             return
 
-        # Filter only YANG schemas because we only compile YANG
-        schemas_to_download = []
-        for s in schemas:
-            if s.format != "yang":
-                continue
-
-            if len(explicit_modules) > 0:
-                # Use explicit module filtering
-                for module in explicit_modules:
-                    # Parse module specification (might include version as module@version)
-                    if "@" in module:
-                        module_parts = module.split("@", 1)
-                        if s.identifier == module_parts[0] and s.version == module_parts[1]:
-                            break
-                    elif s.identifier == module:
-                        break
-                else:
-                    continue
-            elif len(module_sets) > 0:
-                # Use module set filtering
-                if not schema_filter.should_include_module(s.identifier, module_sets):
-                    continue
-            else:
-                # Use legacy filtering for backward compatibility
-                # Skip models:
-                # - junos-rpc: all RPC modules use an undefined grouping?!
-                if s.identifier.startswith("junos-rpc"):
-                    print("Skipping {s.identifier}: undefined grouping common-forwarding", err=True)
-                    continue
-
-            schemas_to_download.append((identifier=s.identifier, version=s.version, format=s.format))
+        schemas_to_download = filter_schemas_for_download(schemas, module_sets)
 
         if len(schemas_to_download) == 0:
             print("No schemas available for download", err=True)
@@ -330,11 +336,10 @@ actor CmdGetSchema(env, args, log_handler):
     username = args.get_str("username")
     password = args.get_str("password")
     skip_host_key_check = args.get_bool("insecure")
-    identifier_str = args.get_str("identifier")
-    version_str = args.get_str("version")
-    version = version_str if version_str != "" else None
     format = args.get_str("format")
     output_dir = args.get_str("output-dir")
+    module_sets = args.get_strlist("module-set")
+    explicit_modules = args.get_strlist("module")
 
     var client: ?netconf.Client = None
     var schema_getter: ?netconf.SchemaGetter = None
@@ -343,18 +348,32 @@ actor CmdGetSchema(env, args, log_handler):
         if e is not None:
             print("Error: Failed to connect: {e}", err=True)
             env.exit(1)
+
+        # Validate that module-set and module are mutually exclusive
+        if module_sets != [] and explicit_modules != []:
+            print("Error: Cannot specify both --module-set and --module options", err=True)
+            env.exit(1)
+
+        # Parse and validate module sets
+        if module_sets != []:
+            warnings = schema_filter.validate_module_sets(module_sets)
+            for warning in warnings:
+                print(warning, err=True)
+
+        client = c  # Store client for later use
+
+        # Check if explicit modules are provided
+        if len(explicit_modules) > 0:
+            schemas_to_download = build_explicit_schemas_list(explicit_modules, format)
+
+            print("Downloading {len(schemas_to_download)} specified schemas")
+            schema_getter = netconf.SchemaGetter(c)
+            sg = schema_getter
+            if sg is not None:
+                sg.download(_on_schema_download, _on_schemas_complete, schemas_to_download)
         else:
-            client = c  # Store client for later use
-            if identifier_str == "all":
-                # List all schemas first
-                c.list_schemas(_on_list_schemas)
-            else:
-                # Download single schema
-                schema_getter = netconf.SchemaGetter(c)
-                schemas_to_download = [(identifier=identifier_str, version=version, format=format)]
-                sg = schema_getter
-                if sg is not None:
-                    sg.download(_on_schema_download, _on_download_complete, schemas_to_download)
+            # List all schemas and filter based on module sets (or download all if no module sets)
+            c.list_schemas(_on_list_schemas)
 
     def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: str, namespace: str, version: str, format: str)], error: ?netconf.NetconfError):
         if error is not None:
@@ -362,15 +381,18 @@ actor CmdGetSchema(env, args, log_handler):
             env.exit(1)
             return
 
-        # TODO: can the compiler "convert" the schemas argument list[(identifier: str, namespace: str, version: str, format: str)]
-        # to a list[(identifier: str, version: ?str, format: ?str)] where the namespace field is missing the other two are optional?
-        schemas_to_download = [(identifier=s.identifier, version=s.version, format=s.format) for s in schemas]
+        schemas_to_download = filter_schemas_for_download(schemas, module_sets)
+
+        if len(schemas_to_download) == 0:
+            print("No matching schemas found to download", err=True)
+            env.exit(1)
+            return
 
         print("Found {len(schemas_to_download)} schemas to download")
         schema_getter = netconf.SchemaGetter(c)
         sg = schema_getter
         if sg is not None:
-            sg.download(_on_schema_download, _on_download_complete, schemas_to_download)
+            sg.download(_on_schema_download, _on_schemas_complete, schemas_to_download)
 
     def _on_schema_download(current_index: int, total_schemas: int, schema: (identifier: str, version: ?str, format: ?str), schema_data: ?str, error: ?netconf.NetconfError):
         """Handle each downloaded schema"""
@@ -406,7 +428,7 @@ actor CmdGetSchema(env, args, log_handler):
         else:
             print("  Warning: No data received for {schema.identifier}")
 
-    def _on_download_complete(error: ?netconf.NetconfError):
+    def _on_schemas_complete(error: ?netconf.NetconfError):
         """Called when all schemas have been downloaded"""
         if error is not None:
             print("\nError downloading schemas: {error.error_message}", err=True)
@@ -487,10 +509,11 @@ actor main(env):
         p_get_config.add_option("module", "strlist", "+", [], "Module(s) to include")
 
         p_get_schema = p.add_cmd("get-schema", "Download schema(s) from NETCONF server", cmd_get_schema)
-        p_get_schema.add_arg("identifier", "Schema identifier or 'all' to download all schemas", True, "?")
-        p_get_schema.add_option("version", "str", "?", "", "Schema version")
         p_get_schema.add_option("format", "str", "?", "yang", "Schema format (yang or yin)")
         p_get_schema.add_option("output-dir", "str", "?", "schemas", "Output directory for downloaded schemas")
+        module_sets_help = "Module set(s) to include ({schema_filter.get_module_set_names()})"
+        p_get_schema.add_option("module-set", "strlist", "+", [], module_sets_help)
+        p_get_schema.add_option("module", "strlist", "+", [], "Module(s) to include (optionally with version as module@version)")
 
         return p.parse(env.argv)
 
