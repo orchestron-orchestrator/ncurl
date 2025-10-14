@@ -19,20 +19,6 @@ import yang.gen3
 import schema_filter
 
 
-def filter_schemas_for_download(schemas: list[(identifier: str, namespace: str, version: str, format: str)], module_sets: list[str]) -> list[(identifier: str, version: ?str, format: ?str)]:
-    """Filter schemas based on module sets"""
-    schemas_to_download = []
-
-    for s in schemas:
-        # Skip non-YANG schemas
-        if s.format != "yang":
-            continue
-        if not schema_filter.should_include_module(s.identifier, module_sets):
-            continue
-        schemas_to_download.append((identifier=s.identifier, version=s.version, format=s.format))
-    return schemas_to_download
-
-
 def build_explicit_schemas_list(explicit_modules: list[str], format: str) -> list[(identifier: str, version: ?str, format: ?str)]:
     """Build a list of schemas to download from explicit module specifications"""
     schemas_to_download = []
@@ -120,6 +106,7 @@ actor CmdGetConfig(env, args, log_handler):
     var config_xml: ?xml.Node = None
     var client: ?netconf.Client = None
     var schemas: list[str] = []
+    var strict_quoting = True
 
     def _on_connect(c: netconf.Client, e: ?Exception):
         if e is not None:
@@ -225,7 +212,24 @@ actor CmdGetConfig(env, args, log_handler):
             env.exit(1)
             return
 
-        schemas_to_download = filter_schemas_for_download(schemas, module_sets)
+        schemas_to_download = []
+        for s in schemas:
+            # Skip non-YANG schemas
+            if s.format != "yang":
+                continue
+            # Skip known broken models
+            if s.identifier.startswith("junos-rpc"):
+                print("Skipping {s.identifier}: undefined grouping common-forwarding", err=True)
+                continue
+            elif s.identifier == "tailf-rollback" or s.identifier.startswith("cicso-xe-openconfig"):
+                print("Skipping {s.identifier}: Cisco IOS XE", err=True)
+                continue
+            if not schema_filter.should_include_module(s.identifier, module_sets):
+                continue
+            if s.identifier == "openconfig-isis-types" and s.version == "2017-01-13":
+                print("Skipping {s.identifier}: incorrect escape in double-quoted string", err=True)
+                strict_quoting = False
+            schemas_to_download.append((identifier=s.identifier, version=s.version, format=s.format))
 
         if len(schemas_to_download) == 0:
             print("No schemas available for download", err=True)
@@ -263,7 +267,7 @@ actor CmdGetConfig(env, args, log_handler):
         print("Retrieved {len(schemas)} schemas")
 
         t0 = time.Stopwatch()
-        root = yang.compile(schemas)
+        root = yang.compile(schemas, strict_quoting=strict_quoting)
         print("Compiled schemas in {t0.elapsed().to_float()}s")
         t0.reset()
         c = config_xml
@@ -381,7 +385,8 @@ actor CmdGetSchema(env, args, log_handler):
             env.exit(1)
             return
 
-        schemas_to_download = filter_schemas_for_download(schemas, module_sets)
+        # Convert to tuple argument for SchemaGetter.download (no namespace field)
+        schemas_to_download = [(identifier=s.identifier, version=s.version, format=s.format) for s in schemas]
 
         if len(schemas_to_download) == 0:
             print("No matching schemas found to download", err=True)
