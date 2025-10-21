@@ -13,12 +13,15 @@ ncurl currently supports the following NETCONF operations:
 
 ## Installation
 
-### Prerequisites
-
-- [Acton](https://www.acton-lang.org/) programming language installed
-- Network access to NETCONF-enabled devices
+There are pre-built (binary releases)[https://github.com/orchestron-orchestrator/ncurl/releases] for MacOS and Linux on x86_64 and aarch64 that you can download. ncurl is a single binary with no external dependencies.
+- `curl -O https://github.com/orchestron-orchestrator/ncurl/releases/download/tip/ncurl-macos-aarch64.tar.gz` (or one of the other platforms / arch)
+- `tar xvf ncurl-*.tar.gz`
+- `chmod a+x ncurl`
+- `./ncurl --help`
 
 ### Building
+
+You can build ncurl yourself from source. First ensure you have the [Acton](https://www.acton-lang.org/) programming language installed, see (the install guide)[https://acton.guide/install.html].
 
 ```bash
 acton build
