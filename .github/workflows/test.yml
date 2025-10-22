@@ -17,7 +17,9 @@ jobs:
         with:
           path: |
             ~/.cache/acton
+            ~/.cache/ayang
             out
+            !out/bin
           # Hacky cache update:
           # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
           key: acton-${{ github.run_id }}
