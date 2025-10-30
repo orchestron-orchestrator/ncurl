@@ -56,12 +56,12 @@ jobs:
         run: ./ncurl get-config --format acton-adata --module-set ietf
       - name: "Test ncurl edit-config with file input"
         run: |
-          ./ncurl edit-config test-edit-config.xml --commit
+          ./ncurl edit-config test/test-edit-config.xml --commit
           ./ncurl get-config --filter-subtree '<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>' | grep -q "test-interface"
         # TODO: enable when we can detect EOF in stdin callback
 #      - name: "Test ncurl edit-config with stdin input"
 #        run: |
-#          cat test-edit-config.xml | ./ncurl edit-config -
+#          cat test/test-edit-config.xml | ./ncurl edit-config -
       - uses: actions/upload-artifact@v4
         with:
           name: ncurl-linux-x86_64
