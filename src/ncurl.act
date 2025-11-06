@@ -273,7 +273,7 @@ actor CmdGetConfig(env, args, log_handler):
         t0.reset()
         c = config_xml
         if c is not None:
-            gdata = yang.gen3.from_xml(root, c, loose=True)
+            gdata = yang.gen3.from_data(root, c, loose=True)
             print("Parsed config to gdata in {t0.elapsed().to_float()}s")
 
             if format == "json":
