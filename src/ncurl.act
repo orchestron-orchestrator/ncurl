@@ -346,7 +346,7 @@ actor CmdEditConfig(env, args, log_handler):
     config_source = args.get_str("config")
     should_commit = args.get_bool("commit")
 
-    var config_xml = ""
+    var config = ""
     var client: ?netconf.Client = None
     var stdin_buffer: list[str] = []
     var empty_line_count = 0
@@ -366,7 +366,7 @@ actor CmdEditConfig(env, args, log_handler):
             empty_line_count += 1
             if empty_line_count >= 2:
                 # Two empty lines means end of input
-                config_xml = "".join(stdin_buffer).strip()
+                config = "".join(stdin_buffer).strip()
                 _connect_and_edit()
                 return
             stdin_buffer.append(input)
@@ -388,7 +388,8 @@ actor CmdEditConfig(env, args, log_handler):
 
     def _do_edit_config():
         if client is not None:
-            client.edit_config(config_xml, _on_edit_config, target, default_operation=default_operation if default_operation != "merge" else None)
+            config_xml = xml.decode("<data>{config}</data>")
+            client.edit_config(config_xml.children, _on_edit_config, target, default_operation=default_operation if default_operation != "merge" else None)
 
     def _on_edit_config(c: netconf.Client, error: ?netconf.NetconfError):
         if error is not None:
@@ -423,7 +424,7 @@ actor CmdEditConfig(env, args, log_handler):
     else:
         try:
             f = file.ReadFile(file.ReadFileCap(file.FileCap(env.auth)), config_source)
-            config_xml = f.read().decode()
+            config = f.read().decode()
             f.close()
             _connect_and_edit()
         except Exception as ex:
