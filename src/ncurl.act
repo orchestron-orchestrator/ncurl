@@ -277,7 +277,7 @@ actor CmdGetConfig(env, args, log_handler):
             print("Parsed config to gdata in {t0.elapsed().to_float()}s")
 
             if format == "json":
-                _output_config(gdata.to_json())
+                _output_config(gdata.to_jsonstr())
                 return
             elif format == "acton-gdata":
                 _output_config(gdata.prsrc())
