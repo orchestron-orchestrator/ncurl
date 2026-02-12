@@ -3,6 +3,9 @@ name: Test
 on:
   push:
 
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -114,3 +117,61 @@ jobs:
           tag: ${{ env.TAG }}
           token: ${{ secrets.GITHUB_TOKEN }}
           replacesArtifacts: true
+
+  build-container-images:
+    if: github.ref == 'refs/heads/main'
+    needs: build-and-test
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: "Check out repository code"
+        uses: actions/checkout@v4
+      - name: "Download binary artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: ncurl-linux-${{ matrix.arch }}
+          path: out/bin
+      - name: "Make binary executable"
+        run: chmod +x out/bin/ncurl
+      - name: "Log in to GHCR"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Build and push arch-specific container image"
+        run: |
+          docker build --pull -t ${{ env.IMAGE }}:latest-${{ matrix.arch }} .
+          docker push ${{ env.IMAGE }}:latest-${{ matrix.arch }}
+
+  create-container-manifest:
+    if: github.ref == 'refs/heads/main'
+    needs: build-container-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: "Log in to GHCR"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Create and push multi-arch manifests"
+        run: |
+          docker manifest create ${{ env.IMAGE }}:latest \
+            ${{ env.IMAGE }}:latest-x86_64 \
+            ${{ env.IMAGE }}:latest-aarch64
+          docker manifest push ${{ env.IMAGE }}:latest
+      - name: "Inspect published manifest"
+        run: docker manifest inspect ${{ env.IMAGE }}:latest

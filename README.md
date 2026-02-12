@@ -48,6 +48,27 @@ docker run -td --name notconf --rm --publish 42830:830 ghcr.io/notconf/notconf
 ./ncurl --insecure get-config
 ```
 
+### Run ncurl as a Sidecar Container
+
+You can run `ncurl` directly from its container image and pass command arguments
+after the image name:
+
+```bash
+docker run -it --rm ghcr.io/orchestron-orchestrator/ncurl:latest --help
+```
+
+To use it as a sidecar with another NETCONF container (for example `notconf`),
+share the target container network namespace:
+
+```bash
+# Start notconf without publishing a host port
+docker run -td --name notconf --rm ghcr.io/notconf/notconf
+
+# Run ncurl in the same network namespace as notconf
+docker run -it --rm --network container:notconf ghcr.io/orchestron-orchestrator/ncurl:latest \
+  --insecure --host localhost --port 830 list-schemas
+```
+
 ## Usage
 
 ### Basic Syntax
