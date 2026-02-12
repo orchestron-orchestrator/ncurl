@@ -7,6 +7,7 @@ A command-line utility for interacting with NETCONF devices, like curl but for N
 
 ncurl currently supports the following NETCONF operations:
 
+- **hello**: Print server capabilities received during NETCONF hello exchange
 - **get-config**: Retrieve configuration from a NETCONF datastore with optional filtering
 - **edit-config**: Edit configuration in a NETCONF datastore
 - **commit**: Commit the candidate configuration to the running configuration
@@ -89,6 +90,14 @@ docker run -it --rm --network container:notconf ghcr.io/orchestron-orchestrator/
 **Note:** All examples use the `--insecure` flag to skip SSH host key verification. This is convenient for testing and development environments where devices may have self-signed certificates or changing host keys because of container restarts.
 
 ### Commands
+
+#### Hello
+
+Print NETCONF server capabilities from the hello exchange:
+
+```bash
+./ncurl --insecure --host router.example.com hello
+```
 
 #### List Schemas
 

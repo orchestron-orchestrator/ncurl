@@ -87,6 +87,42 @@ actor CmdListSchemas(env, args, log_handler):
                       log_handler=log_handler)
 
 
+actor CmdHello(env, args, log_handler):
+    """Print NETCONF server capabilities from hello exchange"""
+
+    host = args.get_str("host")
+    port = args.get_int("port")
+    username = args.get_str("username")
+    password = args.get_str("password")
+    skip_host_key_check = args.get_bool("insecure")
+
+    def _on_connect(c: netconf.Client, e: ?Exception):
+        if e is not None:
+            print("Error: Failed to connect: {e}", err=True)
+            env.exit(1)
+        else:
+            capabilities = c.get_capabilities()
+            print("Server capabilities:")
+            print("====================")
+            print("\n".join(["  {c}" for c in capabilities]))
+
+            def _close_cb():
+                env.exit(0)
+
+            c.close(_close_cb)
+
+    netconf.Client(env.auth,
+                   on_connect=_on_connect,
+                   on_notif=None,
+                   address=host,
+                   username=username,
+                   key=None,
+                   password=password,
+                   port=port,
+                   skip_host_key_check=skip_host_key_check,
+                   log_handler=log_handler)
+
+
 actor CmdGetConfig(env, args, log_handler):
     """Get configuration from a NETCONF server"""
 
@@ -659,6 +695,13 @@ actor main(env):
             logh.add_sink(logging.ConsoleSink())
         CmdGetConfig(env, args, logh)
 
+    def cmd_hello(args):
+        """Command handler for hello"""
+        if args.get_bool("verbose"):
+            logh.set_output_level(logging.TRACE)
+            logh.add_sink(logging.ConsoleSink())
+        CmdHello(env, args, logh)
+
     def cmd_get_schema(args):
         """Command handler for get-schema"""
         if args.get_bool("verbose"):
@@ -699,6 +742,7 @@ actor main(env):
         p.add_bool("insecure", "Disable SSH host key verification")
 
         # Commands
+        p_hello = p.add_cmd("hello", "Print server capabilities from hello exchange", cmd_hello)
         p_list_schemas = p.add_cmd("list-schemas", "List available schemas", cmd_list_schemas)
 
         p_get_config = p.add_cmd("get-config", "Get configuration from NETCONF server", cmd_get_config)
