@@ -1,0 +1,14 @@
+name = "ncurl"
+fingerprint = 0xc284fa60c7abbf25
+dependencies = {
+    "netconf": (
+        repo_url="https://github.com/orchestron-orchestrator/netconf.git",
+        url="https://github.com/orchestron-orchestrator/netconf/archive/15999924215ca50387340becb2e559d11d148bad.zip",
+        hash="N-V-__8AAOL3AQD7Oy0qj2nAbYZ0u3dGWSGfvqABuALB3K0y"
+    ),
+    "yang": (
+        repo_url="https://github.com/orchestron-orchestrator/acton-yang.git",
+        url="https://github.com/orchestron-orchestrator/acton-yang/archive/e3844d750ec323652cd794e66c9916143a5be4ad.zip",
+        hash="N-V-__8AAOn0IABSfxUW5PZr9-OBvzlAK93DIaQ-DFEeGa0n"
+    )
+}
