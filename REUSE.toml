@@ -7,7 +7,7 @@ path = [
     "Makefile",
     "Dockerfile",
     "*.mk",
-    "*.act.json",
+    "Build.act",
     "src/**",
     "test/**",
 
