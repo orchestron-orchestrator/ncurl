@@ -3,12 +3,12 @@ fingerprint = 0xc284fa60c7abbf25
 dependencies = {
     "netconf": (
         repo_url="https://github.com/orchestron-orchestrator/netconf.git",
-        url="https://github.com/orchestron-orchestrator/netconf/archive/1de911729de432fd6da63cd41b6ab82a0835405c.zip",
-        hash="N-V-__8AAGL4AQBbvv2Grh2i6fAUkck-FKilllk35b_vuBhP"
+        url="https://github.com/orchestron-orchestrator/netconf/archive/2c7a5050881eb6e19d06e740add06699d9f5ad06.zip",
+        hash="N-V-__8AACCwAgCDCdukQxaYQwCoLtP9JslqTv8bnSHwfBMW"
     ),
     "yang": (
         repo_url="https://github.com/orchestron-orchestrator/acton-yang.git",
-        url="https://github.com/orchestron-orchestrator/acton-yang/archive/2d2a44f6b606404f5bd04f5177acf58d8f17d56a.zip",
-        hash="N-V-__8AACP2IACZD26Ll_1JNHu5R8G_dViBbIHZx_4grysm"
+        url="https://github.com/orchestron-orchestrator/acton-yang/archive/f0ee31fcf61754d9fa6d0872149b3433137d00a1.zip",
+        hash="N-V-__8AAJ4_IQDRHd4-0vQoIL4cYmBTNi7_mkF69Y3ICfbR"
     )
 }
