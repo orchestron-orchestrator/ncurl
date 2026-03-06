@@ -36,18 +36,15 @@ download-release:
 	ARCH=$$(uname -m); \
 	if [ "$$ARCH" = "arm64" ]; then ARCH="aarch64"; fi; \
 	if [ "$$OS" = "Darwin" ]; then \
-		RELEASE_FILE=ncurl-macos-$$ARCH.tar.gz; \
+		RELEASE_FILE=ncurl-macos-$$ARCH; \
 	else \
-		RELEASE_FILE=ncurl-linux-$$ARCH.tar.gz; \
+		RELEASE_FILE=ncurl-linux-$$ARCH; \
 	fi; \
 	echo "Downloading $$RELEASE_FILE from GitHub..."; \
 	mkdir -p out/bin; \
-	if ! curl -L -f -o /tmp/$$RELEASE_FILE https://github.com/orchestron-orchestrator/ncurl/releases/download/tip/$$RELEASE_FILE; then \
+	if ! curl -L -f -o out/bin/ncurl https://github.com/orchestron-orchestrator/ncurl/releases/download/tip/$$RELEASE_FILE; then \
 		echo "Error: Failed to download $$RELEASE_FILE - this platform may not have a pre-built release"; \
 		exit 1; \
 	fi; \
-	echo "Extracting binary..."; \
-	tar -xzf /tmp/$$RELEASE_FILE -C out/bin/; \
 	chmod +x out/bin/ncurl; \
-	rm /tmp/$$RELEASE_FILE; \
 	echo "Download complete: out/bin/ncurl"
