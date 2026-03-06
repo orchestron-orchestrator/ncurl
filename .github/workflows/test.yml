@@ -101,16 +101,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: ncurl-*
-      - name: "Compress binary artifacts"
+      - name: "Prepare binary release assets"
         run: |
-          tar -czf ncurl-linux-x86_64.tar.gz -C ncurl-linux-x86_64 ncurl
-          tar -czf ncurl-linux-aarch64.tar.gz -C ncurl-linux-aarch64 ncurl
-          tar -czf ncurl-macos-aarch64.tar.gz -C ncurl-macos-aarch64 ncurl
+          mkdir -p release-assets
+          cp ncurl-linux-x86_64/ncurl release-assets/ncurl-linux-x86_64
+          cp ncurl-linux-aarch64/ncurl release-assets/ncurl-linux-aarch64
+          cp ncurl-macos-aarch64/ncurl release-assets/ncurl-macos-aarch64
       - name: "Upload artifacts as release packages"
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          artifacts: "ncurl-*.tar.gz"
+          artifacts: "release-assets/ncurl-*"
           draft: false
           prerelease: true
           name: ${{ env.TAG }}
