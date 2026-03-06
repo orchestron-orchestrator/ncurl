@@ -140,6 +140,9 @@ Retrieve configuration from a NETCONF datastore:
 
 # Get configuration as Acton GData
 ./ncurl --insecure --host router.example.com get-config --format acton-gdata
+
+# Get configuration as a tree view
+./ncurl --insecure --host router.example.com get-config --format tree
 ```
 
 **Options:**
@@ -147,8 +150,9 @@ Retrieve configuration from a NETCONF datastore:
 - `--filter-subtree <xml>`: XML subtree filter
 - `--filter-xpath <expression>`: XPath expression for filtering
 - `--xpath-namespaces <prefix=uri>`: Namespace declarations for XPath filtering (can be specified multiple times)
-- `--format <format>`: Output format (raw-xml, xml, json, acton-gdata, acton-adata) (default: raw-xml)
+- `--format <format>`: Output format (raw-xml, tree, xml, json, acton-gdata, acton-adata) (default: raw-xml)
 - `--output <file>`: Output file (if not specified, prints to stdout)
+  Tree output uses indentation, aligns leaf values across the full tree, and colorizes values on terminal output.
 
 #### Get
 
@@ -172,14 +176,18 @@ Retrieve operational + configuration data from the NETCONF server:
 
 # Convert data to JSON
 ./ncurl --insecure --host router.example.com get --format json
+
+# Render data as a tree view
+./ncurl --insecure --host router.example.com get --format tree
 ```
 
 **Options:**
 - `--filter-subtree <xml>`: XML subtree filter
 - `--filter-xpath <expression>`: XPath expression for filtering
 - `--xpath-namespaces <prefix=uri>`: Namespace declarations for XPath filtering (can be specified multiple times)
-- `--format <format>`: Output format (raw-xml, xml, json, acton-gdata, acton-adata) (default: raw-xml)
+- `--format <format>`: Output format (raw-xml, tree, xml, json, acton-gdata, acton-adata) (default: raw-xml)
 - `--output <file>`: Output file (if not specified, prints to stdout)
+  Tree output uses indentation, aligns leaf values across the full tree, and colorizes values on terminal output.
 
 #### Edit Configuration
 
