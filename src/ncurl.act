@@ -8,6 +8,7 @@ transports), and then we'll be network curl.
 
 import argparse
 import file
+import fixups
 import logging
 import netconf
 import time
@@ -33,6 +34,16 @@ def build_explicit_schemas_list(explicit_modules: list[str], format: str) -> lis
     return schemas_to_download
 
 
+def resolve_client_fixups(args, log_handler):
+    log = logging.Logger(log_handler)
+    no_fixups = args.get_bool("no-fixups")
+    if no_fixups:
+        log.info("NETCONF fixups: disabled (--no-fixups)")
+        return []
+    log.info("NETCONF fixups: enabled (default)")
+    return fixups.FIXUPS
+
+
 actor CmdListSchemas(env, args, log_handler):
     """List available schemas from a NETCONF server"""
 
@@ -41,6 +52,7 @@ actor CmdListSchemas(env, args, log_handler):
     username = args.get_str("username")
     password = args.get_str("password")
     skip_host_key_check = args.get_bool("insecure")
+    client_fixups = resolve_client_fixups(args, log_handler)
 
     var schemas_found = []
 
@@ -84,7 +96,8 @@ actor CmdListSchemas(env, args, log_handler):
                       password=password,
                       port=port,
                       skip_host_key_check=skip_host_key_check,
-                      log_handler=log_handler)
+                      log_handler=log_handler,
+                      fixups=client_fixups)
 
 
 actor CmdHello(env, args, log_handler):
@@ -95,6 +108,7 @@ actor CmdHello(env, args, log_handler):
     username = args.get_str("username")
     password = args.get_str("password")
     skip_host_key_check = args.get_bool("insecure")
+    client_fixups = resolve_client_fixups(args, log_handler)
 
     def _on_connect(c: netconf.Client, e: ?Exception):
         if e is not None:
@@ -120,18 +134,19 @@ actor CmdHello(env, args, log_handler):
                    password=password,
                    port=port,
                    skip_host_key_check=skip_host_key_check,
-                   log_handler=log_handler)
+                   log_handler=log_handler,
+                   fixups=client_fixups)
 
 
-actor CmdGetConfig(env, args, log_handler):
-    """Get configuration from a NETCONF server"""
+actor CmdGetData(env, args, log_handler, use_get_config: bool):
+    """Get data from a NETCONF server using get or get-config"""
 
     host = args.get_str("host")
     port = args.get_int("port")
     username = args.get_str("username")
     password = args.get_str("password")
     skip_host_key_check = args.get_bool("insecure")
-    source = args.get_str("source")
+    client_fixups = resolve_client_fixups(args, log_handler)
     filter_subtree = args.get_str("filter-subtree")
     filter_xpath = args.get_str("filter-xpath")
     xpath_namespaces = args.get_strlist("xpath-namespaces")
@@ -139,6 +154,8 @@ actor CmdGetConfig(env, args, log_handler):
     format = args.get_str("format")
     module_sets = args.get_strlist("module-set")
     explicit_modules = args.get_strlist("module")
+    request_label = "configuration" if use_get_config else "data"
+    save_label = "Configuration" if use_get_config else "Data"
 
     var config_xml: ?xml.Node = None
     var client: ?netconf.Client = None
@@ -195,12 +212,16 @@ actor CmdGetConfig(env, args, log_handler):
 
             filter_node = xml.Node("filter", nsdefs, attributes=filter_attrs)
 
-        c.get_config(_on_get_config, source, filter_node)
+        if use_get_config:
+            source = args.get_str("source")
+            c.get_config(_on_get_data, source, filter_node)
+        else:
+            c.get(_on_get_data, filter_node)
 
-    def _on_get_config(c: netconf.Client, result: ?xml.Node, error: ?netconf.NetconfError):
+    def _on_get_data(c: netconf.Client, result: ?xml.Node, error: ?netconf.NetconfError):
         # Check for errors
         if error is not None:
-            print("Error getting config: {error.error_message}", err=True)
+            print("Error getting {request_label}: {error.error_message}", err=True)
             env.exit(1)
 
         # Extract data element
@@ -241,7 +262,7 @@ actor CmdGetConfig(env, args, log_handler):
                 elif config_xml.text is not None:
                     # If data element has text content
                     config = str(config_xml.text)
-                _output_config(config)
+                _output_data(config)
 
     def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: str, namespace: str, version: str, format: str)], error: ?netconf.NetconfError):
         if error is not None:
@@ -314,16 +335,16 @@ actor CmdGetConfig(env, args, log_handler):
             print("Parsed config to gdata in {t0.elapsed().to_float()}s")
 
             if format == "json":
-                _output_config(gdata.to_jsonstr())
+                _output_data(gdata.to_jsonstr())
                 return
             elif format == "acton-gdata":
-                _output_config(gdata.prsrc())
+                _output_data(gdata.prsrc())
                 return
             elif format == "acton-adata":
-                _output_config(yang.data.pradata(root, gdata, loose=True))
+                _output_data(yang.data.pradata(root, gdata, loose=True))
                 return
             elif format == "xml":
-                _output_config(gdata.to_xmlstr())
+                _output_data(gdata.to_xmlstr())
                 return
 
             print("Unknown output format")
@@ -338,14 +359,14 @@ actor CmdGetConfig(env, args, log_handler):
             else:
                 env.exit(1)
 
-    def _output_config(config):
+    def _output_data(config):
         """Output the configuration data"""
         if output_file != "":
             # Write to file
             f = file.WriteFile(file.WriteFileCap(file.FileCap(env.auth)), output_file)
             f.write(config.encode())
             f.close()
-            print("Configuration saved to: {output_file}")
+            print("{save_label} saved to: {output_file}")
         else:
             # Print to stdout
             print(config)
@@ -367,7 +388,8 @@ actor CmdGetConfig(env, args, log_handler):
                       password=password,
                       port=port,
                       skip_host_key_check=skip_host_key_check,
-                      log_handler=log_handler)
+                      log_handler=log_handler,
+                      fixups=client_fixups)
 
 
 actor CmdEditConfig(env, args, log_handler):
@@ -382,6 +404,7 @@ actor CmdEditConfig(env, args, log_handler):
     default_operation = args.get_str("default-operation")
     config_source = args.get_str("config")
     should_commit = args.get_bool("commit")
+    client_fixups = resolve_client_fixups(args, log_handler)
 
     var config = ""
     var client: ?netconf.Client = None
@@ -421,7 +444,8 @@ actor CmdEditConfig(env, args, log_handler):
                           password=password,
                           port=port,
                           skip_host_key_check=skip_host_key_check,
-                          log_handler=log_handler)
+                          log_handler=log_handler,
+                          fixups=client_fixups)
 
     def _do_edit_config():
         if client is not None:
@@ -477,6 +501,7 @@ actor CmdCommit(env, args, log_handler):
     username = args.get_str("username")
     password = args.get_str("password")
     skip_host_key_check = args.get_bool("insecure")
+    client_fixups = resolve_client_fixups(args, log_handler)
 
     def _on_connect(c: netconf.Client, e: ?Exception):
         if e is not None:
@@ -506,7 +531,8 @@ actor CmdCommit(env, args, log_handler):
                       password=password,
                       port=port,
                       skip_host_key_check=skip_host_key_check,
-                      log_handler=log_handler)
+                      log_handler=log_handler,
+                      fixups=client_fixups)
 
 
 actor CmdDiscardChanges(env, args, log_handler):
@@ -517,6 +543,7 @@ actor CmdDiscardChanges(env, args, log_handler):
     username = args.get_str("username")
     password = args.get_str("password")
     skip_host_key_check = args.get_bool("insecure")
+    client_fixups = resolve_client_fixups(args, log_handler)
 
     def _on_connect(c: netconf.Client, e: ?Exception):
         if e is not None:
@@ -546,7 +573,8 @@ actor CmdDiscardChanges(env, args, log_handler):
                       password=password,
                       port=port,
                       skip_host_key_check=skip_host_key_check,
-                      log_handler=log_handler)
+                      log_handler=log_handler,
+                      fixups=client_fixups)
 
 
 actor CmdGetSchema(env, args, log_handler):
@@ -557,6 +585,7 @@ actor CmdGetSchema(env, args, log_handler):
     username = args.get_str("username")
     password = args.get_str("password")
     skip_host_key_check = args.get_bool("insecure")
+    client_fixups = resolve_client_fixups(args, log_handler)
     format = args.get_str("format")
     output_dir = args.get_str("output-dir")
     module_sets = args.get_strlist("module-set")
@@ -675,7 +704,8 @@ actor CmdGetSchema(env, args, log_handler):
                   password=password,
                   port=port,
                   skip_host_key_check=skip_host_key_check,
-                  log_handler=log_handler)
+                  log_handler=log_handler,
+                  fixups=client_fixups)
 
 
 actor main(env):
@@ -688,12 +718,19 @@ actor main(env):
             logh.add_sink(logging.ConsoleSink())
         CmdListSchemas(env, args, logh)
 
+    def cmd_get(args):
+        """Command handler for get"""
+        if args.get_bool("verbose"):
+            logh.set_output_level(logging.TRACE)
+            logh.add_sink(logging.ConsoleSink())
+        CmdGetData(env, args, logh, False)
+
     def cmd_get_config(args):
         """Command handler for get-config"""
         if args.get_bool("verbose"):
             logh.set_output_level(logging.TRACE)
             logh.add_sink(logging.ConsoleSink())
-        CmdGetConfig(env, args, logh)
+        CmdGetData(env, args, logh, True)
 
     def cmd_hello(args):
         """Command handler for hello"""
@@ -740,10 +777,21 @@ actor main(env):
         p.add_option("password", "str", "?", "admin", "Password for authentication")
         p.add_bool("verbose", "Verbose logging from SSH / NETCONF client")
         p.add_bool("insecure", "Disable SSH host key verification")
+        p.add_bool("no-fixups", "Disable NETCONF client fixups/workarounds")
 
         # Commands
         p_hello = p.add_cmd("hello", "Print server capabilities from hello exchange", cmd_hello)
         p_list_schemas = p.add_cmd("list-schemas", "List available schemas", cmd_list_schemas)
+
+        p_get = p.add_cmd("get", "Get data from NETCONF server", cmd_get)
+        p_get.add_option("filter-subtree", "str", "?", "", "XML subtree filter")
+        p_get.add_option("filter-xpath", "str", "?", "", "XPath expression for filtering")
+        p_get.add_option("xpath-namespaces", "strlist", "*", [], "Namespace declarations for XPath filtering (format: prefix=uri)")
+        p_get.add_option("format", "str", "?", "raw-xml", "Output format (raw-xml, xml, json, acton-gdata or acton-adata")
+        p_get.add_option("output", "str", "?", "", "Output file (if not specified, prints to stdout)")
+        module_sets_help = "Module set(s) to include ({schema_filter.get_module_set_names()})"
+        p_get.add_option("module-set", "strlist", "+", [], module_sets_help)
+        p_get.add_option("module", "strlist", "+", [], "Module(s) to include")
 
         p_get_config = p.add_cmd("get-config", "Get configuration from NETCONF server", cmd_get_config)
         p_get_config.add_option("source", "str", "?", "running", "Configuration datastore (running, startup, candidate)")

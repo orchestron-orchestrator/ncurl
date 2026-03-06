@@ -8,6 +8,7 @@ A command-line utility for interacting with NETCONF devices, like curl but for N
 ncurl currently supports the following NETCONF operations:
 
 - **hello**: Print server capabilities received during NETCONF hello exchange
+- **get**: Retrieve operational + configuration data with optional filtering
 - **get-config**: Retrieve configuration from a NETCONF datastore with optional filtering
 - **edit-config**: Edit configuration in a NETCONF datastore
 - **commit**: Commit the candidate configuration to the running configuration
@@ -47,6 +48,9 @@ docker run -td --name notconf --rm --publish 42830:830 ghcr.io/notconf/notconf
 
 # Get running configuration
 ./ncurl --insecure get-config
+
+# Get operational + configuration data
+./ncurl --insecure get
 ```
 
 ### Run ncurl as a Sidecar Container
@@ -85,6 +89,7 @@ docker run -it --rm --network container:notconf ghcr.io/orchestron-orchestrator/
 - `--username <username>`: Username for authentication (default: admin)
 - `--password <password>`: Password for authentication (default: admin)
 - `--insecure`: Skip SSH host key verification (useful for testing/development)
+- `--no-fixups`: Disable built-in NETCONF client fixups/workarounds
 - `--verbose`: Enable verbose logging for SSH/NETCONF client debugging
 
 **Note:** All examples use the `--insecure` flag to skip SSH host key verification. This is convenient for testing and development environments where devices may have self-signed certificates or changing host keys because of container restarts.
@@ -139,6 +144,37 @@ Retrieve configuration from a NETCONF datastore:
 
 **Options:**
 - `--source <datastore>`: Configuration datastore (running, startup, candidate) (default: running)
+- `--filter-subtree <xml>`: XML subtree filter
+- `--filter-xpath <expression>`: XPath expression for filtering
+- `--xpath-namespaces <prefix=uri>`: Namespace declarations for XPath filtering (can be specified multiple times)
+- `--format <format>`: Output format (raw-xml, xml, json, acton-gdata, acton-adata) (default: raw-xml)
+- `--output <file>`: Output file (if not specified, prints to stdout)
+
+#### Get
+
+Retrieve operational + configuration data from the NETCONF server:
+
+```bash
+# Get all available data
+./ncurl --insecure --host router.example.com get
+
+# Apply subtree filter
+./ncurl --insecure --host router.example.com get \
+  --filter-subtree '<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>'
+
+# Apply XPath filter with namespaces
+./ncurl --insecure --host router.example.com get \
+  --filter-xpath '/if:interfaces-state/if:interface[if:name="eth0"]' \
+  --xpath-namespaces 'if=urn:ietf:params:xml:ns:yang:ietf-interfaces'
+
+# Save returned data to file
+./ncurl --insecure --host router.example.com get --output data.xml
+
+# Convert data to JSON
+./ncurl --insecure --host router.example.com get --format json
+```
+
+**Options:**
 - `--filter-subtree <xml>`: XML subtree filter
 - `--filter-xpath <expression>`: XPath expression for filtering
 - `--xpath-namespaces <prefix=uri>`: Namespace declarations for XPath filtering (can be specified multiple times)
@@ -264,4 +300,3 @@ Download schema(s) from a NETCONF server:
 ncurl is built using the following Acton libraries:
 - [netconf](https://github.com/orchestron-orchestrator/netconf.git) - NETCONF client implementation
 - [yang](https://github.com/orchestron-orchestrator/acton-yang.git) - YANG data modeling support
-
