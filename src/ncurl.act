@@ -44,6 +44,110 @@ def resolve_client_fixups(args, log_handler):
     return fixups.FIXUPS
 
 
+def _node_text(node) -> str:
+    if node.text is None:
+        return ""
+    text = str(node.text)
+    ws_stripped = text.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r", "")
+    if ws_stripped == "":
+        return ""
+    return text.strip()
+
+
+def _color_value(value: str, use_color: bool) -> str:
+    if not use_color:
+        return value
+    return "\x1b[36m{value}\x1b[0m"
+
+
+def _inline_key(node) -> (str, str):
+    key_tags = ["name", "id", "index", "key"]
+    for key_tag in key_tags:
+        for child in node.children:
+            if child.tag == key_tag and len(child.children) == 0:
+                key_text = _node_text(child)
+                if key_text != "":
+                    return (key_tag, key_text)
+    return ("", "")
+
+
+def _is_hidden_key_child(child, key_tag: str, key_text: str) -> bool:
+    return key_tag != "" and child.tag == key_tag and len(child.children) == 0 and _node_text(child) == key_text
+
+
+def _tree_node_parts(node):
+    key_tag, key_text = _inline_key(node)
+    label = node.tag
+    if key_text != "":
+        label = "{label} {key_text}"
+    visible_children = [child for child in node.children if not _is_hidden_key_child(child, key_tag, key_text)]
+    return (label=label, text=_node_text(node), visible_children=visible_children)
+
+
+def _flatten_single_path(node, base_label: str) -> (label: str, value: ?str):
+    parts = _tree_node_parts(node)
+    label = "{base_label} {parts.label}"
+    if parts.text != "":
+        return (label=label, value=parts.text)
+    if len(parts.visible_children) == 1:
+        return _flatten_single_path(parts.visible_children[0], label)
+    return (label=label, value=None)
+
+
+def _collect_tree_rows(node, depth: int) -> list[(depth: int, label: str, value: ?str)]:
+    rows = []
+    parts = _tree_node_parts(node)
+    label = parts.label
+    node_text = parts.text
+    visible_children = parts.visible_children
+
+    # Recursively flatten single-child container chains into one row.
+    if node_text == "" and len(visible_children) == 1:
+        flattened = _flatten_single_path(visible_children[0], label)
+        if flattened.value is not None:
+            rows.append((depth=depth, label=flattened.label, value=flattened.value))
+            return rows
+
+    if len(visible_children) == 0:
+        leaf_value = node_text if node_text != "" else None
+        rows.append((depth=depth, label=label, value=leaf_value))
+        return rows
+
+    rows.append((depth=depth, label=label, value=None))
+    for child in visible_children:
+        rows.extend(_collect_tree_rows(child, depth + 1))
+    return rows
+
+
+def render_data_tree(data_node, use_color: bool=True) -> str:
+    rows = []
+    for child in data_node.children:
+        rows.extend(_collect_tree_rows(child, 0))
+
+    if len(rows) == 0:
+        text = _node_text(data_node)
+        data_value = text if text != "" else None
+        rows.append((depth=0, label="data", value=data_value))
+
+    rendered_rows = []
+    for row in rows:
+        rendered_rows.append((left="{'  ' * row.depth}{row.label}", value=row.value))
+
+    value_column = 20
+    for row in rendered_rows:
+        if row.value is not None and len(row.left) > value_column:
+            value_column = len(row.left)
+
+    lines = []
+    for row in rendered_rows:
+        left = row.left
+        if row.value is not None:
+            lines.append("{left.ljust(value_column)} : {_color_value(str(row.value), use_color)}")
+        else:
+            lines.append(left)
+    return "\n".join(lines)
+
+
 actor CmdListSchemas(env, args, log_handler):
     """List available schemas from a NETCONF server"""
 
@@ -235,8 +339,24 @@ actor CmdGetData(env, args, log_handler, use_get_config: bool):
             print("No data element in response", err=True)
             env.exit(1)
 
-        # If format is not raw-xml, fetch schemas
-        if format != "raw-xml":
+        # For raw-xml and tree, output directly from XML without schema download
+        if format == "raw-xml" or format == "tree":
+            if config_xml is not None:
+                if format == "tree":
+                    _output_data(render_data_tree(config_xml, use_color=output_file == ""))
+                    return
+                # Extract just the configuration data content
+                config = ""
+                if len(config_xml.children) > 0:
+                    # Encode children of data element
+                    for data_child in config_xml.children:
+                        config += data_child.encode()
+                elif config_xml.text is not None:
+                    # If data element has text content
+                    config = str(config_xml.text)
+                _output_data(config)
+        else:
+            # If format is not raw-xml/tree, fetch schemas
             print("Fetching schemas for data conversion...")
             # Check if explicit modules are provided
             if len(explicit_modules) > 0:
@@ -250,20 +370,6 @@ actor CmdGetData(env, args, log_handler, use_get_config: bool):
             else:
                 # List all schemas and filter based on module sets (or download all if no module sets)
                 c.list_schemas(_on_list_schemas)
-        else:
-            # For raw-xml, just output the config
-            if config_xml is not None:
-                # Extract just the configuration data content
-                config = ""
-                if len(config_xml.children) > 0:
-                    # Encode children of data element
-                    for data_child in config_xml.children:
-                        config += data_child.encode()
-                elif config_xml.text is not None:
-                    # If data element has text content
-                    config = str(config_xml.text)
-                _output_data(config)
-
     def _on_list_schemas(c: netconf.Client, schemas: list[(identifier: str, namespace: str, version: str, format: str)], error: ?netconf.NetconfError):
         if error is not None:
             print("Error: Failed to list schemas: {error}", err=True)
@@ -787,7 +893,7 @@ actor main(env):
         p_get.add_option("filter-subtree", "str", "?", "", "XML subtree filter")
         p_get.add_option("filter-xpath", "str", "?", "", "XPath expression for filtering")
         p_get.add_option("xpath-namespaces", "strlist", "*", [], "Namespace declarations for XPath filtering (format: prefix=uri)")
-        p_get.add_option("format", "str", "?", "raw-xml", "Output format (raw-xml, xml, json, acton-gdata or acton-adata")
+        p_get.add_option("format", "str", "?", "raw-xml", "Output format (raw-xml, tree, xml, json, acton-gdata or acton-adata)")
         p_get.add_option("output", "str", "?", "", "Output file (if not specified, prints to stdout)")
         module_sets_help = "Module set(s) to include ({schema_filter.get_module_set_names()})"
         p_get.add_option("module-set", "strlist", "+", [], module_sets_help)
@@ -798,7 +904,7 @@ actor main(env):
         p_get_config.add_option("filter-subtree", "str", "?", "", "XML subtree filter")
         p_get_config.add_option("filter-xpath", "str", "?", "", "XPath expression for filtering")
         p_get_config.add_option("xpath-namespaces", "strlist", "*", [], "Namespace declarations for XPath filtering (format: prefix=uri)")
-        p_get_config.add_option("format", "str", "?", "raw-xml", "Output format (raw-xml, xml, json, acton-gdata or acton-adata")
+        p_get_config.add_option("format", "str", "?", "raw-xml", "Output format (raw-xml, tree, xml, json, acton-gdata or acton-adata)")
         p_get_config.add_option("output", "str", "?", "", "Output file (if not specified, prints to stdout)")
         module_sets_help = "Module set(s) to include ({schema_filter.get_module_set_names()})"
         p_get_config.add_option("module-set", "strlist", "+", [], module_sets_help)
