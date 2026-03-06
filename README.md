@@ -154,6 +154,20 @@ Retrieve configuration from a NETCONF datastore:
 - `--output <file>`: Output file (if not specified, prints to stdout)
   Tree output uses indentation, aligns leaf values across the full tree, and colorizes values on terminal output.
 
+**Example tree output:**
+```text
+interfaces
+  interface SC-1-3-C1
+    config type                  : ianaift:ethernetCsmacd
+    config enabled               : true
+    state type                   : ianaift:ethernetCsmacd
+    state admin-status           : UP
+    state oper-status            : UP
+  interface SC-1-3-C2
+    config type                  : ianaift:ethernetCsmacd
+    config enabled               : false
+```
+
 #### Get
 
 Retrieve operational + configuration data from the NETCONF server:
