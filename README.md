@@ -11,6 +11,7 @@ ncurl currently supports the following NETCONF operations:
 - **get**: Retrieve operational + configuration data with optional filtering
 - **get-config**: Retrieve configuration from a NETCONF datastore with optional filtering
 - **edit-config**: Edit configuration in a NETCONF datastore
+- **rpc**: Send raw NETCONF RPC XML and print the raw reply
 - **commit**: Commit the candidate configuration to the running configuration
 - **discard-changes**: Discard changes in the candidate configuration
 - **list-schemas**: List all available schemas from a NETCONF server
@@ -241,6 +242,31 @@ Edit configuration in a NETCONF datastore:
   </interface>
 </interfaces>
 ```
+
+#### RPC
+
+Send an arbitrary NETCONF RPC operation and print the raw `<rpc-reply>`:
+
+```bash
+# Send an operation element from a file
+./ncurl --insecure --host router.example.com rpc get-system-time.xml
+
+# Read RPC XML from stdin
+./ncurl --insecure --host router.example.com rpc -
+
+# Save the raw rpc-reply to a file
+./ncurl --insecure --host router.example.com rpc --output reply.xml get-system-time.xml
+```
+
+**Arguments:**
+- `request`: RPC XML file path, or `-` to read from stdin
+
+**Options:**
+- `--output <file>`: Output file (if not specified, prints the raw `<rpc-reply>` to stdout)
+
+`ncurl` manages the NETCONF message framing and outer `<rpc>` envelope. The
+input should usually be the operation element itself, but if you provide a full
+`<rpc>` document `ncurl` will unwrap and send its single child operation.
 
 #### Commit
 
