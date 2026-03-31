@@ -11,6 +11,7 @@ import file
 import fixups
 import logging
 import netconf
+import process
 import time
 import xml
 
@@ -219,7 +220,7 @@ actor CmdListSchemas(env, args, log_handler):
         print("\nTotal schemas: {count}")
         env.exit(0)
 
-    c = netconf.Client(env.auth,
+    c = netconf.Client(process.ProcessCap(env.auth),
                       on_connect=_on_connect,
                       on_notif=None,
                       address=host,
@@ -257,7 +258,7 @@ actor CmdHello(env, args, log_handler):
 
             c.close(_close_cb)
 
-    netconf.Client(env.auth,
+    netconf.Client(process.ProcessCap(env.auth),
                    on_connect=_on_connect,
                    on_notif=None,
                    address=host,
@@ -469,7 +470,7 @@ actor CmdGetData(env, args, log_handler, use_get_config: bool):
             print("Parsed config to gdata in {t0.elapsed().to_float()}s")
 
             if format == "json":
-                _output_data(gdata.to_jsonstr())
+                _output_data(gdata.to_yang_jsonstr())
                 return
             elif format == "acton-gdata":
                 _output_data(gdata.prsrc())
@@ -513,7 +514,7 @@ actor CmdGetData(env, args, log_handler, use_get_config: bool):
         else:
             env.exit(0)
 
-    client = netconf.Client(env.auth,
+    client = netconf.Client(process.ProcessCap(env.auth),
                       on_connect=_on_connect,
                       on_notif=None,
                       address=host,
@@ -569,7 +570,7 @@ actor CmdEditConfig(env, args, log_handler):
             stdin_buffer.append(input)
 
     def _connect_and_edit():
-        netconf.Client(env.auth,
+        netconf.Client(process.ProcessCap(env.auth),
                           on_connect=_on_connect,
                           on_notif=None,
                           address=host,
@@ -702,7 +703,7 @@ actor CmdRpc(env, args, log_handler):
         _emit_reply(unwrap(result, "Expected rpc-reply").encode(), 1 if error is not None else 0, error)
 
     def _connect_and_send():
-        netconf.Client(env.auth,
+        netconf.Client(process.ProcessCap(env.auth),
                        on_connect=_on_connect,
                        on_notif=None,
                        address=host,
@@ -773,7 +774,7 @@ actor CmdCommit(env, args, log_handler):
 
         c.close(_close_cb)
 
-    netconf.Client(env.auth,
+    netconf.Client(process.ProcessCap(env.auth),
                       on_connect=_on_connect,
                       on_notif=None,
                       address=host,
@@ -815,7 +816,7 @@ actor CmdDiscardChanges(env, args, log_handler):
 
         c.close(_close_cb)
 
-    netconf.Client(env.auth,
+    netconf.Client(process.ProcessCap(env.auth),
                       on_connect=_on_connect,
                       on_notif=None,
                       address=host,
@@ -946,7 +947,7 @@ actor CmdGetSchema(env, args, log_handler):
             env.exit(0)
 
     # Connect and start the download process
-    client = netconf.Client(env.auth,
+    client = netconf.Client(process.ProcessCap(env.auth),
                   on_connect=_on_connect,
                   on_notif=None,
                   address=host,
