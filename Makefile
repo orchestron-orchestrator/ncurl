@@ -42,7 +42,7 @@ download-release:
 	fi; \
 	echo "Downloading $$RELEASE_FILE from GitHub..."; \
 	mkdir -p out/bin; \
-	if ! curl -L -f -o out/bin/ncurl https://github.com/orchestron-orchestrator/ncurl/releases/download/tip/$$RELEASE_FILE; then \
+	if ! curl -L -f -o out/bin/ncurl https://github.com/stratoweave/ncurl/releases/download/tip/$$RELEASE_FILE; then \
 		echo "Error: Failed to download $$RELEASE_FILE - this platform may not have a pre-built release"; \
 		exit 1; \
 	fi; \
