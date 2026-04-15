@@ -2,13 +2,13 @@ name = "ncurl"
 fingerprint = 0xc284fa60c7abbf25
 dependencies = {
     "netconf": (
-        repo_url="https://github.com/orchestron-orchestrator/netconf.git",
-        url="https://github.com/orchestron-orchestrator/netconf/archive/7a9cc03fc5752cc5f73a64905efadb8b4161e6c6.zip",
+        repo_url="https://github.com/stratoweave/netconf.git",
+        url="https://github.com/stratoweave/netconf/archive/7a9cc03fc5752cc5f73a64905efadb8b4161e6c6.zip",
         hash="N-V-__8AAAi5AgBtmYeIx9ntJCBcelsCzsQ_OQUYv1wCXY8_"
     ),
     "yang": (
-        repo_url="https://github.com/orchestron-orchestrator/acton-yang.git",
-        url="https://github.com/orchestron-orchestrator/acton-yang/archive/663be2b9d488d4db5d90f667b9282732c42b6a66.zip",
+        repo_url="https://github.com/stratoweave/acton-yang.git",
+        url="https://github.com/stratoweave/acton-yang/archive/663be2b9d488d4db5d90f667b9282732c42b6a66.zip",
         hash="N-V-__8AABehIgAe94j3UyP7f0YQEtMcBcZ5UGTjMdwUndkw"
     )
 }

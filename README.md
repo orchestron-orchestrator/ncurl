@@ -1,5 +1,5 @@
 # ncurl - NETCONF URL Tool
-[![REUSE Compliance Check](https://github.com/orchestron-orchestrator/ncurl/actions/workflows/reuse-compliance.yml/badge.svg)](https://github.com/orchestron-orchestrator/ncurl/actions/workflows/reuse-compliance.yml)
+[![REUSE Compliance Check](https://github.com/stratoweave/ncurl/actions/workflows/reuse-compliance.yml/badge.svg)](https://github.com/stratoweave/ncurl/actions/workflows/reuse-compliance.yml)
 
 A command-line utility for interacting with NETCONF devices, like curl but for NETCONF. Written in [Acton](https://www.acton-lang.org/), ncurl provides a simple interface for common NETCONF operations.
 
@@ -19,8 +19,8 @@ ncurl currently supports the following NETCONF operations:
 
 ## Installation
 
-There are pre-built [binary releases](https://github.com/orchestron-orchestrator/ncurl/releases) for MacOS and Linux on x86_64 and aarch64 that you can download. ncurl is a single binary with no external dependencies.
-- `curl -L -o ncurl https://github.com/orchestron-orchestrator/ncurl/releases/download/tip/ncurl-macos-aarch64` (or one of the other platforms / arch)
+There are pre-built [binary releases](https://github.com/stratoweave/ncurl/releases) for MacOS and Linux on x86_64 and aarch64 that you can download. ncurl is a single binary with no external dependencies.
+- `curl -L -o ncurl https://github.com/stratoweave/ncurl/releases/download/tip/ncurl-macos-aarch64` (or one of the other platforms / arch)
 - `chmod a+x ncurl`
 - `./ncurl --help`
 
@@ -59,7 +59,7 @@ You can run `ncurl` directly from its container image and pass command arguments
 after the image name:
 
 ```bash
-docker run -it --rm ghcr.io/orchestron-orchestrator/ncurl:latest --help
+docker run -it --rm ghcr.io/stratoweave/ncurl:latest --help
 ```
 
 To use it as a sidecar with another NETCONF container (for example `notconf`),
@@ -70,7 +70,7 @@ share the target container network namespace:
 docker run -td --name notconf --rm ghcr.io/notconf/notconf
 
 # Run ncurl in the same network namespace as notconf
-docker run -it --rm --network container:notconf ghcr.io/orchestron-orchestrator/ncurl:latest \
+docker run -it --rm --network container:notconf ghcr.io/stratoweave/ncurl:latest \
   --insecure --host localhost --port 830 list-schemas
 ```
 
@@ -345,5 +345,5 @@ Download schema(s) from a NETCONF server:
 ## Dependencies
 
 ncurl is built using the following Acton libraries:
-- [netconf](https://github.com/orchestron-orchestrator/netconf.git) - NETCONF client implementation
-- [yang](https://github.com/orchestron-orchestrator/acton-yang.git) - YANG data modeling support
+- [netconf](https://github.com/stratoweave/netconf.git) - NETCONF client implementation
+- [yang](https://github.com/stratoweave/acton-yang.git) - YANG data modeling support
