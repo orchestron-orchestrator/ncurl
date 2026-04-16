@@ -3,12 +3,12 @@ fingerprint = 0xc284fa60c7abbf25
 dependencies = {
     "netconf": (
         repo_url="https://github.com/stratoweave/netconf.git",
-        url="https://github.com/stratoweave/netconf/archive/7a9cc03fc5752cc5f73a64905efadb8b4161e6c6.zip",
-        hash="N-V-__8AAAi5AgBtmYeIx9ntJCBcelsCzsQ_OQUYv1wCXY8_"
+        url="https://github.com/stratoweave/netconf/archive/cc9c3f26471d1df9ffd606aa4e7a49cd41b2cadb.zip",
+        hash="N-V-__8AAPC4AgAXL041cKnR0ecR2USXi6E7yxWTfvhm5ZDc"
     ),
     "yang": (
         repo_url="https://github.com/stratoweave/acton-yang.git",
-        url="https://github.com/stratoweave/acton-yang/archive/663be2b9d488d4db5d90f667b9282732c42b6a66.zip",
-        hash="N-V-__8AABehIgAe94j3UyP7f0YQEtMcBcZ5UGTjMdwUndkw"
+        url="https://github.com/stratoweave/acton-yang/archive/7a3c67ec50f8d2206ac45bcb19c52482931ef7f7.zip",
+        hash="N-V-__8AAIQYIwABZ1GuSa-iF92KIDAndZZLz_cm0ni8aREi"
     )
 }
