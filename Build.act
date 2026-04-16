@@ -8,7 +8,7 @@ dependencies = {
     ),
     "yang": (
         repo_url="https://github.com/stratoweave/acton-yang.git",
-        url="https://github.com/stratoweave/acton-yang/archive/7a3c67ec50f8d2206ac45bcb19c52482931ef7f7.zip",
-        hash="N-V-__8AAIQYIwABZ1GuSa-iF92KIDAndZZLz_cm0ni8aREi"
+        url="https://github.com/stratoweave/acton-yang/archive/95ce4ae083a3920a98f6f984c91bd3d09f556231.zip",
+        hash="N-V-__8AADv1IgCnOSwFc0GTl0aUtxRAgC-Cs46To6-U5G-k"
     )
 }
