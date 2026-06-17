@@ -31,8 +31,8 @@ jobs:
       - name: "Start notconf in background"
         run: |
           docker run -td --name notconf --publish 42830:830 ghcr.io/notconf/notconf
-      - run: acton build
       - run: acton test
+      - run: acton build
       - name: "Test ncurl list-schemas"
         run: ./ncurl list-schemas
       - name: "Test ncurl get-config"
